@@ -4,20 +4,6 @@ Most people use a spreadsheet to track their movies; I built a state machine. Ci
 
 ---
 
-## Table of Contents
-
-- [The Architecture](#the-architecture)
-  - [How it's wired (ERD)](#how-its-wired-erd)
-  - [The Logic Behind the Design](#the-logic-behind-the-design)
-- [Data Integrity and Automation](#data-integrity-and-automation)
-  - [1. The Progress Protector](#1-the-progress-protector)
-  - [2. The Procedural "Write API"](#2-the-procedural-write-api)
-  - [3. The Python Gateway (Security)](#3-the-python-gateway-security)
-- [Deployment, Logic, and Operations](#deployment-logic-and-operations)
-- [Tech Stack](#tech-stack)
-
----
-
 ## The Architecture
 
 I designed the Cine Registry with a strict separation of concerns. The system differentiates between "one-off" events (Movies) and ongoing, multi-session commitments (Series).
