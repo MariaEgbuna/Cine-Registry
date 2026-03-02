@@ -1,9 +1,8 @@
-# Cine Registry: A Database with a Brain
+# A Database with a Brain
 
 Most people use a spreadsheet to track their movies; I built a state machine. Cine Registry is my personal PostgreSQL engine designed to automate the tedious parts of media tracking. Through custom triggers and procedural logic, the database handles my watch statuses and binge-watching stats automatically. It’s about moving away from fragile manual logs and toward a single, bulletproof source of truth.
 
 ---
-
 ## The Architecture
 
 I designed the Cine Registry with a strict separation of concerns. The system differentiates between "one-off" events (Movies) and ongoing, multi-session commitments (Series).
@@ -20,12 +19,12 @@ I designed the Cine Registry with a strict separation of concerns. The system di
 
 ![Cine_Registry ER Diagram](Images/ER%20Diagram.png)
 
-| Component | Role | Why it exists |
-| :--- | :--- | :--- |
-| **`dates_table`** | The Calendar | A central timeline for all temporal and seasonal analysis. |
-| **`series_metadata`** | The Show Catalog | A unique registry for every show, preventing data duplication. |
-| **`series_log`** | The Session Tracker | Where the daily "watching" happens, linked back to the metadata. |
-| **`movies`** | The Film Vault | Individual movie entries mapped to the central calendar. |
+| Component   | Role   | Why it exists |
+| :---   | :---   | :--- |
+| **`dates_table`**   | The Calendar   | A central timeline for all temporal and seasonal analysis. |
+| **`series_metadata`**   | The Show Catalog   | A unique registry for every show, preventing data duplication. |
+| **`series_log`**   | The Session Tracker   | Where the daily "watching" happens, linked back to the metadata. |
+| **`movies`**   | The Film Vault   | Individual movie entries mapped to the central calendar. |
 
 ### The Logic Behind the Design
 
