@@ -22,8 +22,9 @@ DROP FUNCTION IF EXISTS cine_registry.fn_clean_dates_logic();
     standardized, unique identifiers. This ensures my primary keys remain 
     consistent and human-readable across both Movies and Series.
 
+FUNCTION NAME: fn_generate_unique_id
+   
  LOGIC:
-    - fn_generate_unique_id: 
         * 3-Character Prefixing: I built this to extract and clean titles, 
           intelligently ignoring articles like 'The', 'A', or 'An' to get to 
           the core name.
@@ -36,8 +37,7 @@ DROP FUNCTION IF EXISTS cine_registry.fn_clean_dates_logic();
         * I enforce a strict Prefix-YY format specifically for the 
           series_metadata table to keep my show tracking organized.
 
- TABLES IMPACTED: 
-    - series_metadata (series_code), movies (movie_id)
+ TABLES IMPACTED: series_metadata (series_code), movies (movie_id)
 ================================================================================*/
 
 CREATE OR REPLACE FUNCTION cine_registry.fn_generate_unique_id()
@@ -117,12 +117,12 @@ END;
 $function$ 
 LANGUAGE plpgsql;
 
--- TRIGGER (Series Branch)
+-- TRIGGER (Series Metadata Table)
 CREATE TRIGGER trg_generate_series_id 
 BEFORE INSERT ON cine_registry.series_metadata 
 FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_generate_unique_id();
 
--- TRIGGER (Movie Branch)
+-- TRIGGER (Movies Table)
 CREATE TRIGGER trg_generate_movie_id 
 BEFORE INSERT ON cine_registry.movies 
 FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_generate_unique_id();
@@ -136,8 +136,9 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_generate_unique_id();
     text inputs and scrubs my arrays to ensure everything is perfectly formatted 
     before it's committed to the registry.
 
+FUNCTION NAME: fn_sanitize_registry_entries
+
  LOGIC:
-    - fn_sanitize_registry_entries: 
         * Whitespace Normalization: I use REGEXP_REPLACE here to trim leading/trailing 
           spaces and collapse internal multi-spaces into a single space, keeping 
           titles and names clean.
@@ -149,8 +150,7 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_generate_unique_id();
         * Platform Cleaning: I apply specific formatting rules to the platform 
           field so my streaming service labels remain consistent.
 
- TABLES IMPACTED: 
-    - series_metadata, movies
+ TABLES IMPACTED: series_metadata, movies
 ================================================================================*/
 
 CREATE OR REPLACE FUNCTION cine_registry.fn_sanitize_registry_entries()
@@ -200,10 +200,11 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_sanitize_registry_entries();
     autonomously manages the transitions between 'Watching', 'Finished', 
     'On-Hold', and 'Dropped' states based on my logging activity.
 
+FUNCTION NAME: fn_progress_protector: 
+
  LOGIC:
-    - fn_progress_protector: 
         * Status Overrides: I designed this to explicitly respect 'On-Hold' and 
-          'Dropped' statuses set by Maria, ensuring the counter never 
+          'Dropped' statuses set by me, ensuring the counter never 
           accidentally forces a 'Finished' state.
         * Auto-Promotion: I programmed it to automatically flip the watch_status 
           to 'Finished' the exact moment my 'episodes_watched' matches the 
@@ -215,8 +216,7 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_sanitize_registry_entries();
           'end_date' if it's currently NULL; I don't want to overwrite my 
           original completion dates during metadata updates.
 
- TABLES IMPACTED: 
-    - series_log
+ TABLES IMPACTED: series_log
 ================================================================================*/
 
 CREATE OR REPLACE FUNCTION cine_registry.fn_progress_protector()
@@ -263,8 +263,10 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_progress_protector();
     deleted records for emergency recovery and maintains a constant 'last_updated' 
     heartbeat across my core tables.
 
+FUNCTION NAME(S): fn_set_last_updated, fn_audit_metadata_deletion, fn_audit_movie_deletion
+
  LOGIC:
-    - fn_set_last_updated: 
+    - : fn_set_last_updated
         * I use this as a reusable stamper to ensure the 'last_updated' column 
           always reflects the exact system time during any UPDATE operation.
     - fn_audit_metadata_deletion: 
@@ -274,8 +276,7 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_progress_protector();
         * I apply the same safety net for Movies, capturing the data in a 
           dedicated audit table prior to any permanent deletion.
 
- TABLES IMPACTED: 
-    - series_metadata, movies, series_log, movies_audit, series_metadata_audit
+ TABLES IMPACTED: series_metadata, movies, series_log, movies_audit, series_metadata_audit
 ================================================================================*/
 
 CREATE OR REPLACE FUNCTION cine_registry.fn_set_last_updated()
@@ -348,8 +349,9 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_audit_movie_deletion();
     binge-watching detection are pinpoint accurate. It keeps the dates_table 
     clean and standardized across all my reporting tools.
 
+FUNCTION NAME: fn_clean_dates_logic
+
  LOGIC:
-    - fn_clean_dates_logic: 
         * Text Normalization: I built this to strip the annoying whitespace from 
           day and month names that TO_CHAR often leaves behind during my data loads.
         * Weekend Logic: I automate the 'is_weekend' flag here, strictly following 
@@ -357,8 +359,7 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_audit_movie_deletion();
         * Indexing: I generate a custom 'day_of_week_index' (0-6) so that my 
           visualizations in Power BI actually sort by Monday-first, the way they should.
 
- TABLES IMPACTED: 
-    - dates_table
+ TABLES IMPACTED: dates_table
 ================================================================================*/
 
 CREATE OR REPLACE FUNCTION cine_registry.fn_clean_dates_logic()
@@ -401,8 +402,9 @@ FOR EACH ROW EXECUTE FUNCTION cine_registry.fn_clean_dates_logic();
     entries. It ensures that any logged season strictly adheres to the actual 
     season count I've defined in the series_metadata table.
 
+FUNCTION NAME: fn_check_season_limit
+
  LOGIC:
-    - fn_check_season_limit: 
         * Metadata Bridge: I use this function to bridge the gap between tables, 
           using the 'series_code' from my log to look up 'total_seasons'.
         * Threshold Enforcement: I compare my current 'season_no' against the 
