@@ -1,7 +1,7 @@
 -- *********************************************************************************************
 -- 					04_SAMPLE_DATA.SQL - INTEGRATION & DEMO SUITE
 -- *********************************************************************************************
-/* PURPOSE: This script populates the Cine_Registry schema with a diversified set of 
+/* PURPOSE: This script populates the schema with a diversified set of 
    sample data to demonstrate trigger automation, state transitions, and view logic.
    It serves as a functional test for the Procedural API.
 */
@@ -69,40 +69,42 @@ SELECT * FROM cine_registry.series_log;
 
 -- A. Registering New Content via Procedure
 /*
+SYNTAX: 
+	CALL cine_registry.add_series(
+	    '${title}', 
+	    '${country}', 
+	    ${year_released}, 
+	    ${year_completed}, 
+	    ${total_seasons}, 
+	    ${total_episodes}, 
+	    ${avg_runtime}, 
+	    ARRAY[${genres}], 
+	    '${platform}', (Hulu, Netflix, Apple TV+, etc.)
+	    '${status}', (Ended/TBD/Limited/Returning/Cancelled)
+	    ${seasons_pre_log},
+	    ${tmdb_id} -- Optional
+	);
 Triggers will automatically generate 'BEA-22' series_code and clean the genre array.
-CALL cine_registry.add_series(
-    '${title}', 
-    '${country}', 
-    ${year_released}, 
-    ${year_completed}, 
-    ${total_seasons}, 
-    ${total_episodes}, 
-    ${avg_runtime}, 
-    ARRAY[${genres}], 
-    '${platform}', (Hulu, Netflix, Apple TV+, etc.)
-    '${status}', (Ended/TBD/Limited/Returning/Cancelled)
-    ${seasons_pre_log},
-    ${tmdb_id} -- Optional
-);
 */
 
 CALL cine_registry.add_series('The Bear', 'US', 2022, NULL, 4, 32, 30, ARRAY['Drama', 'Comedy'], 'Hulu', 'Returning', 0);
 
 -- B. Logging Movies (Smart ID Linking)
-/* The movie_watch procedure handles ID retrieval and rewatch flagging automatically.
-CALL cine_registry.movie_watch(
-    '${movie_title}', 
-    ${year_released}, 
-    '${country}', 
-    ARRAY[${genres}], 
-    ${runtime}, 
-    ${rating}, 
-    '${review}', 
-    '${completion_status}', (Finished/Skimmed/Dropped)
-    ${is_rewatch}, TRUE/FALSE
-    '${date_watched}',
-    ${tmdb_id} -- Optional
-);
+/*
+SYNTAX:
+	CALL cine_registry.movie_watch(
+	    '${movie_title}', 
+	    ${year_released}, 
+	    '${country}', 
+	    ARRAY[${genres}], 
+	    ${runtime}, 
+	    ${rating}, 
+	    '${review}', 
+	    '${completion_status}', (Finished/Skimmed/Dropped)
+	    ${is_rewatch}, TRUE/FALSE
+	    '${date_watched}',
+	    ${tmdb_id} -- Optional
+	);
 */
 
 -- This will be logged as a rewatch since 'Inception' (2010) is already in the movies table.
@@ -110,20 +112,19 @@ CALL cine_registry.movie_watch('Inception', 2010, 'US', '{"Sci-Fi", "Action"}', 
 
 -- C. Daily Episode Tracking (State Machine Test)
 /* 
-Triggers will keep status as 'Watching' for this entry.
 Syntax: 
-CALL cine_registry.series_watch(
-	'${series_code}', 
-	${season_no}, 
-	${total_eps}, 
-	${eps_watched}, 
-	'${watch_type}', (Binge/Weekly/Background/All-Nighter/One-a-Day/Batch/Casual)
-	${rating}, 
-	'${review}', 
-	${is_rewatch}, TRUE/FALSE
-	'${optional_start_date}', (Stamps current_date if NULL)
-	${optional_end_date} (Stamps NULL if NULL, auto-updates to current_date when season completes)
-);
+	CALL cine_registry.series_watch(
+		'${series_code}', 
+		${season_no}, 
+		${total_eps}, 
+		${eps_watched}, 
+		'${watch_type}', (Binge/Weekly/Background/All-Nighter/One-a-Day/Batch/Casual)
+		${rating}, 
+		'${review}', 
+		${is_rewatch}, TRUE/FALSE
+		'${optional_start_date}', (Stamps current_date if NULL)
+		${optional_end_date} (Stamps NULL if NULL, auto-updates to current_date when season completes)
+	);
 */
 
 -- Mid-season update, should remain 'Watching' with NULL end_date.
