@@ -1,50 +1,46 @@
 /* ================================================================================
    							STORED PROCEDURES MASTER BACKUP
    ================================================================================
-   Schema: cine_registry
-   Description: Core logic for metadata registration and progress tracking.
-   ================================================================================ */
-
--- Drop Procedures
-DROP PROCEDURE IF EXISTS cine_registry.series_watch;
-DROP PROCEDURE IF EXISTS cine_registry.movie_watch;
-DROP PROCEDURE IF EXISTS cine_registry.add_series;
+*/
 
 /* --------------------------------------------------------------------------------
-   1. REGISTRY MANAGEMENT: add_series
-   Description: Registers core details of a TV show into the metadata library.
-   Logic: 
-    - Soft duplicate guard (Title + Year).
-    - Relies on 'fn_sanitize_registry_entries' and 'fn_generate_unique_id'.
-   --------------------------------------------------------------------------------*/
-
-CREATE OR REPLACE PROCEDURE cine_registry.add_series(
-    p_title text, 
-    p_country text, 
-    p_released integer, 
-    p_completed integer DEFAULT NULL, 
-    p_seasons integer DEFAULT NULL, 
-    p_episodes integer DEFAULT NULL, 
-    p_runtime integer DEFAULT NULL, 
-    p_genre text[] DEFAULT NULL, 
-    p_platform text DEFAULT NULL, 
-    p_status text DEFAULT 'Returning', 
-    p_seasons_pre_log integer DEFAULT 0,
-    p_tmdb_id integer DEFAULT NULL
+ * add_series (Series Metadata Intake)
+ * PURPOSE: Registers new TV show into the series_metadata table.
+*/
+CREATE OR REPLACE PROCEDURE entries.add_series(
+    p_title          TEXT, 
+    p_country        TEXT, 
+    p_released       INTEGER, 
+    p_completed      INTEGER DEFAULT NULL, 
+    p_seasons        INTEGER DEFAULT NULL, 
+    p_episodes       INTEGER DEFAULT NULL, 
+    p_runtime        INTEGER DEFAULT NULL, 
+    p_genres         TEXT[] DEFAULT NULL, 
+    p_platform       TEXT DEFAULT NULL, 
+    p_status         TEXT DEFAULT 'Returning', 
+    p_seasons_pre_log INTEGER DEFAULT 0,
+    p_tmdb_id        INTEGER DEFAULT NULL
 )
+LANGUAGE plpgsql
 AS $procedure$
 DECLARE
     v_exists BOOLEAN;
+    v_clean_genres TEXT[];
+    v_clean_platform TEXT;
 BEGIN
-    -- 1. TMDB ID Guard: If we have an ID, check it first.
+    -- 1. Data Sanitization Logic
+    v_clean_genres := array_replace(p_genres, 'Science Fiction', 'SciFi');
+    v_clean_platform := UPPER(p_platform);
+
+    -- 2. TMDB ID Guard: If we have an ID, check it first.
     IF p_tmdb_id IS NOT NULL THEN
         SELECT EXISTS (
-            SELECT 1 FROM cine_registry.series_metadata WHERE tmdb_id = p_tmdb_id
+            SELECT 1 FROM entries.series_metadata WHERE tmdb_id = p_tmdb_id
         ) INTO v_exists;
     ELSE
         -- Fallback: Title + Year guard if TMDB ID is missing
         SELECT EXISTS (
-            SELECT 1 FROM cine_registry.series_metadata 
+            SELECT 1 FROM entries.series_metadata 
             WHERE title = p_title AND year_released = p_released::SMALLINT
         ) INTO v_exists;
     END IF;
@@ -54,139 +50,228 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 2. Insertion
-    INSERT INTO cine_registry.series_metadata (
-    	title, country, year_released, year_completed,total_seasons, total_episodes, 
-    	avg_runtime, genre, platform, status, seasons_pre_log, tmdb_id
+    -- 3. Insertion into series_metadata using sanitized variables
+    INSERT INTO entries.series_metadata (
+        title, country, year_released, year_completed, total_seasons, total_episodes, 
+        avg_runtime, genres, platform, status, seasons_pre_log, tmdb_id
     )
     VALUES (
         p_title, p_country, p_released::SMALLINT, p_completed::SMALLINT, p_seasons::SMALLINT, p_episodes::SMALLINT,
-        p_runtime::SMALLINT, p_genre, p_platform, p_status, p_seasons_pre_log::SMALLINT, p_tmdb_id
+        p_runtime::SMALLINT, v_clean_genres, v_clean_platform, p_status, p_seasons_pre_log::SMALLINT, p_tmdb_id
     );
 
-    RAISE NOTICE 'Series "%" (%) registered successfully with TMDB ID %.', p_title, p_released, p_tmdb_id;
+    RAISE NOTICE 'Series "%" (%) registered successfully.', p_title, p_released;
 END;
-$procedure$ 
-LANGUAGE plpgsql;
-
+$procedure$;
 
 /* --------------------------------------------------------------------------------
-   2. MOVIE LOGGING: movie_watch
-   Description: Logs a movie session with automatic rewatch detection.
-   Logic:
-    - Automatically sets is_rewatch = TRUE if title/year exists.
-    - Reuses existing movie_id for consistent rewatch tracking.
-   -------------------------------------------------------------------------------- 
+ * series_watch (Progress Tracking)
+ * PURPOSE: for managing active episodic viewing.
 */
 
-CREATE OR REPLACE PROCEDURE cine_registry.movie_watch(
-    p_title text, 
-    p_year integer, 
-    p_country text, 
-    p_genre text[], 
-    p_runtime integer, 
-    p_rating numeric, 
-    p_review text, 
-    p_completion_status text DEFAULT 'Finished',
-    p_manual_rewatch boolean DEFAULT false, 
-    p_date_watched date DEFAULT CURRENT_DATE,
-    p_tmdb_id integer DEFAULT NULL 
+CREATE OR REPLACE PROCEDURE entries.series_watch(
+    p_series_code      TEXT, 
+    p_season_no        INTEGER, 
+    p_total_episodes   INTEGER, 
+    p_episodes_watched INTEGER, 
+    p_watch_type       TEXT, 
+    p_rating           NUMERIC, 
+    p_review           TEXT, 
+    p_watch_status     TEXT DEFAULT 'Watching', 
+    p_is_rewatch       BOOLEAN DEFAULT FALSE, 
+    p_start_date       DATE DEFAULT CURRENT_DATE, 
+    p_end_date         DATE DEFAULT NULL
 )
+LANGUAGE plpgsql
 AS $procedure$
 DECLARE
-    v_is_rewatch BOOLEAN;
-    v_final_rating NUMERIC := p_rating;
+    v_log_id    INT;
+    v_series_id INT;
 BEGIN
-    -- IMPROVED REWATCH LOGIC: 
-    -- Check by TMDB ID first for 100% accuracy, fallback to title + year.
-    IF p_tmdb_id IS NOT NULL THEN
-        SELECT EXISTS (
-            SELECT 1 FROM cine_registry.movies WHERE tmdb_id = p_tmdb_id
-        ) INTO v_is_rewatch;
-    ELSE
-        SELECT EXISTS (
-            SELECT 1 FROM cine_registry.movies 
-            WHERE movie_title = p_title AND year_released = p_year::SMALLINT
-        ) INTO v_is_rewatch;
-    END IF;
-    
-    -- If DB found it, it's a rewatch. Otherwise, use the user's manual flag.
-    v_is_rewatch := COALESCE(v_is_rewatch, p_manual_rewatch);
+    -- Translate Code to ID
+    SELECT series_id INTO v_series_id 
+      FROM entries.series_metadata 
+     WHERE series_code = p_series_code;
 
-    -- Rating Guard
-    IF p_completion_status = 'Dropped' THEN
-        v_final_rating := NULL;
+    IF v_series_id IS NULL THEN
+        RAISE EXCEPTION 'Series code % not found.', p_series_code;
     END IF;
 
-    INSERT INTO cine_registry.movies (
-        date_watched, movie_title, year_released, country, genre,
-        runtime, rating, review, is_rewatch, completion_status, tmdb_id  
-    	)
-    VALUES (
-        p_date_watched, p_title, p_year::SMALLINT, p_country, p_genre,
-        p_runtime::SMALLINT, v_final_rating, p_review, v_is_rewatch, p_completion_status, p_tmdb_id
-    	);
-END;
-$procedure$ 
-LANGUAGE plpgsql;
-
-
-/* --------------------------------------------------------------------------------
-   3. PROGRESS TRACKING: series_watch
-   Description: Primary tool for tracking episode-by-episode progress.
-   Logic:
-    - Updates active 'Watching' logs or opens new sessions.
-    - Relies on 'fn_progress_protector' for automatic status changes.
-   -------------------------------------------------------------------------------- 
-*/
-
-CREATE OR REPLACE PROCEDURE cine_registry.series_watch(
-    p_series_code text, 
-    p_season_no integer, 
-    p_total_episodes integer, 
-    p_episodes_watched integer, 
-    p_watch_type text, 
-    p_rating numeric, 
-    p_review text, 
-    p_is_rewatch boolean DEFAULT false, 
-    p_start_date date DEFAULT CURRENT_DATE, 
-    p_end_date date DEFAULT NULL
-)
-AS $procedure$
-DECLARE
-    v_log_id INT;
-BEGIN
+    -- Find existing log based on the provided status
     SELECT log_id
       INTO v_log_id
-      FROM cine_registry.series_log
-     WHERE series_code  = p_series_code
+      FROM entries.series_log
+     WHERE series_id    = v_series_id
        AND season_no    = p_season_no::SMALLINT
-       AND watch_status = 'Watching'
+       AND watch_status = p_watch_status 
        AND is_rewatch   = p_is_rewatch
      ORDER BY start_date DESC
      LIMIT 1;
+
+    -- Update existing or Insert new
     IF v_log_id IS NOT NULL THEN
-        UPDATE cine_registry.series_log
+        UPDATE entries.series_log
            SET episodes_watched = p_episodes_watched::SMALLINT,
                total_episodes   = p_total_episodes::SMALLINT,
                watch_type       = p_watch_type,
-               watch_status     = 'Watching',
+               watch_status     = p_watch_status, 
                rating           = p_rating,
                review           = p_review,
                end_date         = COALESCE(p_end_date, end_date)
          WHERE log_id = v_log_id;
+         
+        RAISE NOTICE 'Updated % status for % Season %.', p_watch_status, p_series_code, p_season_no;
     ELSE
-        INSERT INTO cine_registry.series_log (
-            series_code, season_no, total_episodes,
+        INSERT INTO entries.series_log (
+            series_id, season_no, total_episodes,
             episodes_watched, watch_type, watch_status,
             rating, review, is_rewatch, start_date, end_date
         )
         VALUES (
-            p_series_code, p_season_no::SMALLINT, p_total_episodes::SMALLINT, p_episodes_watched::SMALLINT,
-            p_watch_type, 'Watching', p_rating, p_review, p_is_rewatch, p_start_date, p_end_date
+            v_series_id, p_season_no::SMALLINT, p_total_episodes::SMALLINT, p_episodes_watched::SMALLINT,
+            p_watch_type, p_watch_status, p_rating, p_review, p_is_rewatch, p_start_date, p_end_date
         );
+        
+        RAISE NOTICE 'Started new % log for % Season %.', p_watch_status, p_series_code, p_season_no;
     END IF;
 END;
-$procedure$ 
-LANGUAGE plpgsql;
+$procedure$;
 
+/* --------------------------------------------------------------------------------
+ * add_movie (Movie Metadata Intake)
+ * PURPOSE: Official registrar for film details within movie_metadata table.
+--------------------------------------------------------------------------------*/
+
+CREATE OR REPLACE PROCEDURE entries.add_movie(
+    p_title         TEXT,
+    p_year          INTEGER,
+    p_country       TEXT DEFAULT 'US',
+    p_director      TEXT DEFAULT 'Unknown',
+    p_runtime_mins  INTEGER DEFAULT NULL,
+    p_genres        TEXT[] DEFAULT NULL,
+    p_tmdb_id       INTEGER DEFAULT NULL,
+    p_status        TEXT DEFAULT 'Backlog'
+)
+LANGUAGE plpgsql
+AS $procedure$
+DECLARE
+    v_exists        BOOLEAN;
+    v_clean_genres  TEXT[];
+    v_clean_country TEXT;
+    v_new_id        INTEGER; -- Variable to capture the generated ID
+BEGIN
+    -- 1. Data Sanitization
+    v_clean_genres := array_replace(p_genres, 'Science Fiction', 'SciFi');
+    v_clean_country := UPPER(p_country);
+
+    -- 2. Existence Guard
+    IF p_tmdb_id IS NOT NULL THEN
+        SELECT EXISTS (
+            SELECT 1 FROM entries.movie_metadata WHERE tmdb_id = p_tmdb_id
+        ) INTO v_exists;
+    ELSE
+        SELECT EXISTS (
+            SELECT 1 FROM entries.movie_metadata 
+            WHERE title = p_title AND year_released = p_year::SMALLINT
+        ) INTO v_exists;
+    END IF;
+
+    IF v_exists THEN
+        RAISE NOTICE 'Movie "%" (%) is already in the library.', p_title, p_year;
+        RETURN;
+    END IF;
+
+    -- 3. Insertion with ID Capture
+    INSERT INTO entries.movie_metadata (
+        title, 
+        year_released, 
+        country, 
+        director, 
+        runtime_mins, 
+        genres, 
+        tmdb_id,
+        status
+    )
+    VALUES (
+        p_title, 
+        p_year::SMALLINT, 
+        v_clean_country, 
+        p_director,
+        p_runtime_mins::SMALLINT, 
+        v_clean_genres, 
+        p_tmdb_id,
+        p_status
+    )
+    RETURNING movie_id INTO v_new_id; -- The "Golden Link" for your logs
+
+    RAISE NOTICE 'Movie "%" registered successfully with ID: %.', p_title, v_new_id;
+END;
+$procedure$;
+
+/* --------------------------------------------------------------------------------
+ * movie_watch (Movie Activity Logger)
+ * PURPOSE: Records a specific viewing event within the movie_log table.
+   -------------------------------------------------------------------------------- */
+CREATE OR REPLACE PROCEDURE entries.movie_watch(
+    p_movie_code        TEXT, 
+    p_rating            NUMERIC DEFAULT NULL, 
+    p_review            TEXT DEFAULT NULL, 
+    p_completion_status TEXT DEFAULT 'Finished',
+    p_is_rewatch        BOOLEAN DEFAULT FALSE,
+    p_date_watched      DATE DEFAULT CURRENT_DATE,
+    p_date_finished     DATE DEFAULT NULL
+)
+LANGUAGE plpgsql
+AS $procedure$
+DECLARE
+    v_movie_id INTEGER;
+BEGIN
+    -- 1. Metadata Lookup
+    SELECT movie_id 
+    FROM entries.movie_metadata 
+    WHERE movie_code = p_movie_code
+    INTO v_movie_id;
+
+    IF v_movie_id IS NULL THEN
+        RAISE EXCEPTION 'Movie code "%" not found.', p_movie_code;
+    END IF;
+
+    -- 2. Constraint Validation Logic
+    -- Check if dates are logically sound
+    IF p_date_finished IS NOT NULL AND p_date_finished < p_date_watched THEN
+        RAISE EXCEPTION 'Invalid Dates: Finish date (%) cannot be earlier than start date (%).', 
+                        p_date_finished, p_date_watched;
+    END IF;
+
+    -- 3. Status Clean-up
+    IF p_completion_status = 'Dropped' THEN
+        p_rating := NULL;
+        p_date_finished := NULL;
+    ELSIF p_completion_status IN ('Finished', 'Skimmed') AND p_date_finished IS NULL THEN
+        -- Default to same-day finish if not specified
+        p_date_finished := p_date_watched;
+    END IF;
+
+    -- 4. Execution
+    INSERT INTO entries.movie_log (
+        movie_id, 
+        date_watched, 
+        date_finished, 
+        rating, 
+        review, 
+        is_rewatch, 
+        completion_status
+    )
+    VALUES (
+        v_movie_id, 
+        p_date_watched, 
+        p_date_finished, 
+        p_rating, 
+        p_review, 
+        p_is_rewatch, 
+        p_completion_status
+    );
+  
+    RAISE NOTICE 'Watch logged successfully for: %', p_movie_code;
+END;
+$procedure$;
