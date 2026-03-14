@@ -30,14 +30,14 @@ I designed the Cine Registry with a strict separation of concerns. The system di
 
 - **Series Normalization**: By using a 1:N relationship between `series_metadata` and `series_log`, I can track multiple seasons or rewatches without ever having to re-type the show's title or genre.
 - **Time-Stamping**: Every movie and series entry maps back to the dates_table. This ensures that when I run a "Yearly Wrapped" report, the data is perfectly aligned across the entire engine.
-- **Audit & Traceability**: I built `series_metadata_audit` and `movies_audit` to act as a flight recorder. If a record is deleted, the system automatically captures the "who, what, and when" so no data ever truly vanishes into the void.
+- **Audit & Traceability**: I built `series_metadata_audit`, `series_log_audit`, and `movies_audit` to act as a flight recorder. If a record is deleted, the system automatically captures the "who, what, and when" so no data ever truly vanishes into the void.
 - **API Ready**: Both layers include a tmdb_id, allowing the engine to sync with external metadata providers seamlessly.
 
 ---
 
 ## Data Integrity and Automation
 
-I wanted a database that was "self-healing" and defensive. By shifting the logic from the application layer directly into the PostgreSQL engine, I ensured the data stays consistent no matter how I access it. This "Database-First" approach eliminates manual status updates and minimizes human error.
+This "Database-First" approach eliminates manual status updates and minimizes human error.
 
 ### 1. The Progress Protector
 
