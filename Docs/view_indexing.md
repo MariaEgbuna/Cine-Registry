@@ -53,22 +53,7 @@ WHERE genre @> ARRAY['Sci-Fi']::text[];
 
 ---
 
-## 3. Temporal Analytics with dates_table
-
-I built the dates_table to act as a pre-computed "cheat sheet" for time. Instead of making the database calculate years, months, or weekends every time I run a report, I just join to this table for instant answers.
-
-**Why go this route?**
-
-* v_binge_patterns: This view joins my watch logs to the date dimension to see if my "binge spikes" actually line up with weekends or holidays.
-
-* Weekend Logic: By using a simple is_weekend flag, I can feed clean data into Power BI to visualize "Binge Velocity"—basically, how much faster I watch shows on Saturdays vs. workdays.
-
-![The Binge Patterns View](<../Images/Binge Patterns.png>)
-> **Note:** Joining to a static table keeps things lightning-fast and lets me pull complex stats like *All Night Counts* or *Binge Span* without the performance hit of dynamic math.
-
----
-
-## 4. Materialized Snapshots
+## 3. Materialized Snapshots
 
 For heavy historical reporting (like my "Year in Review" stats), I use Materialized Views. Think of these as high-performance snapshots. Instead of calculating complex math every time I open a dashboard, the database saves the final result to the disk.
 
