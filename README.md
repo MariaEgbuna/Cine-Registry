@@ -1,6 +1,6 @@
 # A Database with a Brain
 
-Most people use a spreadsheet to track their movies; I built a state machine. Cine Registry is my personal PostgreSQL engine designed to automate the tedious parts of media tracking. Through custom triggers and procedural logic, the database handles my watch statuses and binge-watching stats automatically. It’s about moving away from fragile manual logs and toward a single, bulletproof source of truth.
+Cine Registry is my personal PostgreSQL engine designed to automate the tedious parts of media tracking. Through custom triggers and procedural logic, the database handles my watch statuses and binge-watching stats automatically. It’s about moving away from fragile manual logs and toward a single, bulletproof source of truth.
 
 ---
 ## The Architecture
