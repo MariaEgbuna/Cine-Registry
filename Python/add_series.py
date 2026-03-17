@@ -30,7 +30,7 @@ if not all(DB_PARAMS.values()):
     sys.exit(1)
 
 # --- FUNCTION DEFINITIONS ---
-def register_new_series():
+def add_series():
     # --- Step 1: TITLE OR ID SEARCH ---
     print("\n--- I'm in Series Registry Mode ---")
     query = input("Series Title or TMDB ID (e.g., 4506): ").strip()
@@ -146,4 +146,4 @@ def register_new_series():
         if 'conn' in locals(): conn.close()
 
 if __name__ == "__main__":
-    register_new_series()
+    add_series()
