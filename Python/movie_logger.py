@@ -6,10 +6,8 @@ import sys
 from dotenv import load_dotenv
 import os
 
-# --- ENVIRONMENT SETUP ---
 load_dotenv()
 
-# --- CONFIGURATION ---
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 DB_SCHEMA = os.getenv("DB_SCHEMA")
 DB_PARAMS = {
@@ -20,7 +18,6 @@ DB_PARAMS = {
     "port": os.getenv("DB_PORT")
 }
 
-# --- VALIDATION CHECKS FOR ENVIRONMENT VARIABLES ---
 if not TMDB_API_KEY:
     print("Error: TMDB_API_KEY not found. Check your .env file.")
     sys.exit(1)
@@ -30,9 +27,7 @@ if not all(DB_PARAMS.values()):
     print(f"Error: Missing database parameters in .env: {missing}")
     sys.exit(1)
 
-# --- FUNCTION DEFINITIONS ---
 def log_movie():
-    # --- STEP 0: DATE SELECTION ---
     print(f"\nDate Watched (Enter for Today, '-1' for Yesterday, or YYYY-MM-DD): ", end='', flush=True)
     date_input = input().strip()
 
@@ -49,7 +44,7 @@ def log_movie():
             print("Invalid date format. Defaulting to Today.")
             final_date = datetime.now().date()
 
-    # --- STEP 1: SEARCH (TITLE OR ID) ---
+    # --- SEARCH (TITLE OR ID) ---
     print("\nStep 1: Enter Movie Title or TMDB ID: ", end='', flush=True)
     query = input().strip()
     
@@ -73,7 +68,7 @@ def log_movie():
             return
 
         print("\nI found multiple matches. Which one is correct?")
-        display_count = min(len(results), 10)  # Show up to 10 results
+        display_count = min(len(results), 10)
         for i in range(display_count):
             r = results[i]
             print(f"[{i}] {r.get('title')} ({r.get('release_date', '????')[:4]}) - ID: {r.get('id')}")
@@ -86,13 +81,13 @@ def log_movie():
     detail_params = {"api_key": TMDB_API_KEY, "language": "en-US"}
     d = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}", params=detail_params, timeout=10).json()
 
-    official_title = d.get('title') # Get the official title from TMDB
-    year_released = d.get('release_date', '0000')[:4] # Extract year from release date
+    official_title = d.get('title')
+    year_released = d.get('release_date', '0000')[:4] 
     country = d.get('production_countries', [{}])[0].get('iso_3166_1', '??') # Get country code or default you want
     genres_list = [g.get('name') for g in d.get('genres', [])] # Extract genre names into a list
-    runtime = d.get('runtime', 0) # Runtime in minutes, default to 0 if not available
+    runtime = d.get('runtime', 0)
 
-    # --- STEP 3: STATUS & RATING ---
+    # --- STATUS & RATING ---
     print(f"\n--- Logging: {official_title} ({year_released}) ---")
     print(f"Watched on: {final_date}")
     print("1. Finished\t2. Skimmed\t3. Dropped")
@@ -100,29 +95,26 @@ def log_movie():
     status_map = {"1": "Finished", "2": "Skimmed", "3": "Dropped"}
     comp_status = status_map.get(choice, "Finished")
 
-    rating = None # Only ask for rating if not dropped
+    rating = None 
     if comp_status != "Dropped":
         rating_input = input(f"Rating (1-10): ").strip()
-        rating = float(rating_input) if rating_input else None # Allow empty rating
+        rating = float(rating_input) if rating_input else None 
     
     review = input("Review/Notes: ")
 
-    # --- STEP 4: DB OPERATIONS (LATE-OPEN) ---
+    # --- DB OPERATIONS ---
     try:
         conn = psycopg2.connect(**DB_PARAMS)
         cur = conn.cursor()
 
-        # Auto-Rewatch detection via TMDB ID
         cur.execute(f"SELECT 1 FROM {DB_SCHEMA}.movies WHERE tmdb_id = %s LIMIT 1", (tmdb_id,))
         is_rewatch = cur.fetchone() is not None
-        # Auto-flag as rewatch if TMDB ID exists in DB
         if is_rewatch:
             print("[AUTO-FLAG] Database confirms this is a REWATCH.") 
         else:
             user_choice = input("Is this a rewatch? (y/n, default n): ").lower().strip()
             is_rewatch = (user_choice == 'y')
 
-        # DB COMMIT
         query = f"""
             INSERT INTO {DB_SCHEMA}.movies (
                 movie_title, date_watched, year_released, country, 
