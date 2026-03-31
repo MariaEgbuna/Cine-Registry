@@ -1,9 +1,3 @@
-/* 
-================================================================================
--- 0. ENVIRONMENT SETUP
-================================================================================ 
-*/
-
 -- Create Database (Note: In many environments, this must be run separately)
 -- CREATE DATABASE media_registry;
 
@@ -11,11 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS entries;
 SET search_path TO entries, public;
 
-/* 
-================================================================================
-                        CALENDAR ASPECT (DATES TABLE)
-================================================================================ 
-*/
+/*CALENDAR ASPECT (DATES TABLE)*/
 CREATE TABLE entries.dates_table (
     date_key DATE PRIMARY KEY,
     date_year SMALLINT NOT NULL CHECK (date_year >= 2025),
@@ -26,21 +16,6 @@ CREATE TABLE entries.dates_table (
     day_of_week_index SMALLINT NOT NULL CHECK (day_of_week_index BETWEEN 1 AND 7),
     is_weekend BOOLEAN NOT NULL
 );
-
-INSERT INTO entries.dates_table (date_key, date_year, quarters, month_num, month_short, day_short, day_of_week_index, is_weekend)
-SELECT 
-    datum AS date_key,
-    EXTRACT(YEAR FROM datum)::SMALLINT AS date_year,
-    EXTRACT(QUARTER FROM datum)::SMALLINT AS quarters,
-    EXTRACT(MONTH FROM datum)::SMALLINT AS month_num,
-    TO_CHAR(datum, 'Mon') AS month_short,
-    TO_CHAR(datum, 'Dy') AS day_short,
-    EXTRACT(ISODOW FROM datum)::SMALLINT AS day_of_week_index,
-    CASE 
-        WHEN EXTRACT(ISODOW FROM datum) IN (6, 7) THEN TRUE 
-        ELSE FALSE 
-    END AS is_weekend
-FROM generate_series('2025-01-01'::DATE, '2029-12-31'::DATE, '1 day'::INTERVAL) AS datum;
 
 /* 
 ================================================================================
