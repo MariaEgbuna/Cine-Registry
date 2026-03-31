@@ -5,10 +5,8 @@ import sys
 from dotenv import load_dotenv
 import os
 
-# --- ENVIRONMENT SETUP ---
 load_dotenv()
 
-# --- CONFIGURATION ---
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 DB_SCHEMA = os.getenv("DB_SCHEMA")
 DB_PARAMS = {
@@ -19,7 +17,6 @@ DB_PARAMS = {
     "port": os.getenv("DB_PORT")
 }
 
-# --- VALIDATION CHECKS FOR ENVIRONMENT VARIABLES ---
 if not TMDB_API_KEY:
     print("Error: TMDB_API_KEY not found. Check your .env file.")
     sys.exit(1)
@@ -29,9 +26,8 @@ if not all(DB_PARAMS.values()):
     print(f"Error: Missing database parameters in .env: {missing}")
     sys.exit(1)
 
-# --- FUNCTION DEFINITIONS ---
 def add_series():
-    # --- Step 1: TITLE OR ID SEARCH ---
+    # --- TITLE OR ID SEARCH ---
     print("\n--- I'm in Series Registry Mode ---")
     query = input("Series Title or TMDB ID (e.g., 4506): ").strip()
     
@@ -66,22 +62,22 @@ def add_series():
         idx = int(choice) if (choice and choice.isdigit() and int(choice) < display_count) else 0
         tmdb_id = results[idx]['id']
     
-    # --- Step 2: FETCH DEEP METADATA ---
+    # --- FETCH METADATA ---
     detail_params = {"api_key": TMDB_API_KEY, "language": "en-US"}
     d = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params=detail_params, timeout=10).json()
     
-    title = d.get('name') # Get the official title from TMDB
-    year_released = int(d.get('first_air_date', '0000')[:4]) # Extract year from first air date
-    print(f"\nTargeting: {title} ({year_released})") # Confirming the title and year for user clarity
+    title = d.get('name')
+    year_released = int(d.get('first_air_date', '0000')[:4]) 
+    print(f"\nTargeting: {title} ({year_released})") 
     
     confirm = input("Is this the correct show? (y/n): ").strip().lower()
     if confirm != 'y':
         print("Aborting registration.")
         return
 
-    # --- Step 3: MAPPING DATA ---
-    api_countries = d.get('origin_country', []) # This is a list of country codes (e.g., ['US', 'CA'])
-    detected_country = api_countries[0] if api_countries else '??' # Default to '??' if no country info is available
+    # --- MAPPING DATA ---
+    api_countries = d.get('origin_country', []) # list of country codes (e.g., ['US', 'CA'])
+    detected_country = api_countries[0] if api_countries else '??'
     
     tmdb_status = d.get('status')
     status_map = {
@@ -113,12 +109,11 @@ def add_series():
     pre_log_input = input(f"Seasons I watched PRIOR to logging (0-{total_seasons}, default 0): ").strip()
     seasons_pre_log = int(pre_log_input) if (pre_log_input and pre_log_input.isdigit()) else 0
 
-    # --- Step 4: DB CONNECTION AND COMMIT (LATE OPEN) ---
+    # --- DB CONNECTION AND COMMIT ---
     try:
         conn = psycopg2.connect(**DB_PARAMS)
         cur = conn.cursor()
 
-        # Duplicate Check
         cur.execute(f"SELECT title FROM {DB_SCHEMA}.series_metadata WHERE tmdb_id = %s", (tmdb_id,))
         if cur.fetchone():
             print(f"\n[!] ALERT: This show is already in the database.")
