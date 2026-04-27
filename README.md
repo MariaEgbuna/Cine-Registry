@@ -60,7 +60,7 @@ Ready to set up your database? Follow these steps to prepare your PostgreSQL sys
 
 If you are curious about how the system works behind the scenes, take a look at these notes:
 
-- [System Audit](Docs/system_audit.md): This explains how I protect your data. If you delete something by mistake, the system has a backup (snapshot) so you can get it back easily.
+- [System Audit](Docs/system_audit.md): This explains how to protect your data. If you delete something by mistake, the system has a backup (snapshot) so you you can get it back easily.
 - [View Architecture & Indexing](Docs/view_indexing.md): This shows how I use special "shortcuts" (indexes) to make your searches super fast and how I organize the data so your reports in Power BI are quick and easy to read.
 
 ---
