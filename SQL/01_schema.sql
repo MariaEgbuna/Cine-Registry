@@ -1,5 +1,5 @@
 -- Create Database (Note: In many environments, this must be run separately)
--- CREATE DATABASE media_registry;
+-- CREATE DATABASE cine_registry;
 
 -- Create Schema
 CREATE SCHEMA IF NOT EXISTS entries;
@@ -56,7 +56,7 @@ CREATE TABLE entries.series_metadata_audit (
 -- 3. Series Log
 CREATE TABLE entries.series_log (
     log_id SERIAL PRIMARY KEY,
-    series_id INTEGER NOT NULL REFERENCES entries.series_metadata(series_id) ON DELETE RESTRICT,
+    series_id INTEGER NOT NULL REFERENCES entries.series_metadata(series_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     start_date DATE NOT NULL REFERENCES entries.dates_table(date_key) ON DELETE RESTRICT,
     end_date DATE REFERENCES entries.dates_table(date_key) ON DELETE RESTRICT,
     season_no SMALLINT NOT NULL,
