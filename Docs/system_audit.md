@@ -1,16 +1,16 @@
-# System Audit & Operational Logging
+# System Audit and Operational Logging
 
-This document shows how I handle the administrative side of the cine_registry engine, focusing on data recovery, trigger monitoring, and system health checks.
+This document explains how I manage the database, including recovering lost data, watching for errors, and checking system health.
 
 ---
 
-## 1. Data Recovery via JSONB Audit
+## 1. Data Recovery using Audit Logs
 
-The system uses AFTER DELETE triggers to take snapshots of records right before they are removed. This lets me perform a 1:1 restoration using the original_data JSONB column.
+When I delete a record, the system uses a special rule to take a snapshot of that data. I save this in an audit table as a JSON file. This allows me to perfectly restore the data if I ever delete something by mistake.
 
-### Scenario: Restoring a Deleted Entry
+### Restoring a Deleted Entry
 
-When something is deleted, the metadata is captured in series_metadata_audit. I keep this recovery snippet in my v_cheat_sheet so I can restore a record with 100% fidelity:
+If I accidentally delete a show, I can find the saved details in the `series_metadata_audit` table. I keep a simple script in my cheat sheet that takes those saved details and puts them back into the main database exactly as they were before.
 
 ``` SQL
 INSERT INTO cine_registry.series_metadata 
@@ -26,9 +26,9 @@ Result: The record is re-inserted into the primary registry, and all original at
 
 ---
 
-## 2. Trigger & Procedure Health Check
+## 2. Trigger and Procedure Health Check
 
-To make sure the State Machine is active, I use a system audit view that queries the information_schema. This lets me verify that all defensive triggers are correctly bound to their tables.
+I use a system view to make sure everything in my database is running smoothly. By checking the system information, I can verify that all my automated rules are correctly connected to their tables. This ensures that the "brain" of my database is always active and guarding my data.
 
 ### Audit Query
 
@@ -41,17 +41,11 @@ FROM information_schema.triggers
 WHERE trigger_schema = 'cine_registry';
 ```
 
-### Operational Guardrails
-
-* trg_series_progress_sync: Keeps watch status consistent with episodic progress.
-* trg_audit_series_delete: Prevents permanent data loss via JSONB snapshotting.
-* trg_clean_movies: Standardizes data entry using REGEXP_REPLACE.
-
 ---
 
-## 3. Automated Metadata Stamping
+## 3. Automated Date Stamping
 
-The system tracks the *last_updated* column through the `fn_set_last_updated` trigger. This ensures the analytical layer in Power BI can accurately filter by the most recent changes.
+Every time I change a record, a rule called `fn_set_last_updated` automatically records the time of that update down to the nanosecond.  Because the system clock creates this time, it is always accurate and does not depend on me typing it in. This keeps my history reliable and makes it easy for my Power BI reports to show exactly when my data changed.
 
 ### Timestamp Verification
 
@@ -62,20 +56,18 @@ ORDER BY last_updated DESC
 LIMIT 5;
 ```
 
-Every INSERT or UPDATE produces a nanosecond-precise timestamp, ensuring the system clock, not user input, governs the record history.
-
 ---
 
-## 4. The "Progress Protector" State Machine
+## 4. The "Progress Protector"
 
-To keep the `series_log` accurate, the `fn_progress_protector` trigger manages the lifecycle of a show. This moves state management away from the user and into the database.
+The `fn_progress_protector` rule handles the status of each show for me. By letting the database manage these changes, I do not have to update them myself.
 
 | Current State | Condition | Automated Result |
 | :--- | :--- | :--- |
-| **Watching** | `episodes_watched < total_episodes` | `status = 'Watching'`, `end_date = NULL` |
-| **Finished** | `episodes_watched == total_episodes` | `status = 'Finished'`, `end_date = CURRENT_DATE` |
-| **Dropped** | User manual override | `end_date = CURRENT_DATE` (closes record) |
-| **On-Hold** | User manual override | `end_date = NULL` (keeps record open) |
+| **Watching** | I have not finished all episodes. | Status is "Watching"; no end date. |
+| **Finished** | I have watched every episode. | Status changes to "Finished"; current date is added. |
+| **Dropped** | I manually stop the show. | Record closes; current date is added. |
+| **On-Hold** | I manually pause the show. | Record stays open; no end date. |
 
 ---
 
