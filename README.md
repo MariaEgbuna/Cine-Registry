@@ -19,8 +19,8 @@ I organized my data into three specific areas:
 | :--- | :--- | :--- |
 | **`dates_table`** | The Calendar | A central timeline to track when I watch things. |
 | **`series_metadata`** | The Show List | A master list of all my shows so there are no duplicates. |
+| **`movie_metadata`** | The Film Vault | A list of all my movies registered to the db. No duplicates. |
 | **`series_log`** | The Show Tracker | A record of my daily show watching. |
-| **`movies`** | The Film Vault | A list of all my movies linked to the calendar. |
 | **`movie_log`** | The Film Tracker | A record of when I watch each movie. |
 
 ### How it works
