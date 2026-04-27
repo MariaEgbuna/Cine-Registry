@@ -15,54 +15,47 @@ I organized my data into three specific areas:
 
 ![Cine_Registry ER Diagram](Images/ER%20Diagram.png)
 
-| Component   | Role   | Why it exists |
-| :---   | :---   | :--- |
-| **`dates_table`**   | The Calendar   | A central timeline for all temporal and seasonal analysis. |
-| **`series_metadata`**   | The Show Catalog   | A unique registry for every show, preventing data duplication. |
-| **`series_log`**   | The Session Tracker   | Where the daily "watching" happens, linked back to the metadata. |
-| **`movies`**   | The Film Vault   | Individual movie entries mapped to the central calendar. |
+| Component | Role | Why it exists |
+| :--- | :--- | :--- |
+| **`dates_table`** | The Calendar | A central timeline to track when I watch things. |
+| **`series_metadata`** | The Show List | A master list of all my shows so there are no duplicates. |
+| **`series_log`** | The Show Tracker | A record of my daily show watching. |
+| **`movies`** | The Film Vault | A list of all my movies linked to the calendar. |
+| **`movie_log`** | The Film Tracker | A record of when I watch each movie. |
 
-### The Logic Behind the Design
+### How it works
 
-- **Series Normalization**: By using a 1:N relationship between `series_metadata` and `series_log`, I can track multiple seasons or rewatches without ever having to re-type the show's title or genre.
-- **Time-Stamping**: Every movie and series entry maps back to the dates_table. This ensures that when I run a "Yearly Wrapped" report, the data is perfectly aligned across the entire engine.
-- **Audit & Traceability**: I built `series_metadata_audit`, `series_log_audit`, and `movies_audit` to act as a flight recorder. If a record is deleted, the system automatically captures the "who, what, and when" so no data ever truly vanishes into the void.
-- **API Ready**: Both layers include a tmdb_id, allowing the engine to sync with external metadata providers seamlessly.
+- **Easy Show Tracking**: I link the main show list to my logs using IDs. Because I use the ID instead of the title, I only have to set up the show details once. I can then track as many seasons or rewatches as I want without extra typing.
+- **Accurate Dates**: Every entry connects to a calendar table. This makes it easy to create reports for any year.
+- **Safety Records**: I have "audit" tables for everything. If I delete something by mistake, the system keeps a copy so I never lose my data.
+- **Automatic Updates**: I use IDs from a movie database (TMDB). This helps my system talk to other sites to get info automatically.
 
 ---
 
-## Data Integrity and Automation
+## Keeping Data Correct and Automatic
 
-This "Database-First" approach eliminates manual status updates and minimizes human error.
+This database approach stops manual work and reduces mistakes.
 
 ### 1. The Progress Protector
+I created a rule called `fn_progress_protector`. When the number of episodes I have watched matches the total number of episodes in a show, the system automatically:
 
-I wrote a trigger called fn_progress_protector that acts as a logic gate. The moment episodes_watched matches total_episodes, the system automatically:
-
-- Flips the watch_status to 'Finished'.
-
-- Stamps the end_date to close the record.
-This ensures my "Active" views stay clean without me having to manually "check off" a show.
+- Marks the show as 'Finished'.
+- Adds an end date to the record.
+This keeps my "Active" list clean without me needing to do it manually.
 
 ### 2. The Procedural "Write API"
+I do not add data directly to the tables. Instead, I use special commands that act as a gateway:
 
-To maintain a clean state, I never use raw INSERT statements. Everything flows through a set of Stored Procedures that act as a private API for the database:
-
-- **add_series**: My entry point for new content. This ensures a strict Parent-Child initialization; it populates the `series_metadata` (seasons, runtime, etc.) before a single episode is logged. Because of Foreign Key constraints, an "orphaned" watch session can't exist.
-
-- **series_watch**: My "daily driver". It handles the logic of starting a new season, incrementing episode counts, and refreshing the last_updated timestamp to keep my dashboard accurate in real-time.
-
-- **movie_watch**: This procedure features "Smart Detective" logic. It automatically scans for existing title and year combinations; if it finds a match, it links the entry and flags it as a Rewatch automatically.
+- **add_metadata**: Used to add a new show/movie. It makes sure the details are saved before I log any watchlog. This prevents errors where a watch session exists without a show/movie to link to.
+- **series_watch**: Used for my daily updates. It manages everything, like starting a new season or updating the count, to keep my dashboard accurate.
+- **movie_watch**: This has "smart" logic. It checks if I have already seen a movie. If I have, it automatically links the new watch and marks it as a rewatch.
 
 ### 3. The Python Gateway (Security)
+I use Python scripts to help the database handle outside information.
 
-To bridge the gap between the web and the database, I built Python utilities (movie_logger.py, add_series.py) that handle the external heavy lifting.
-
-- Metadata Enrichment: The scripts fetch deep metadata (Genres, TMDB IDs, etc.) from the TMDB API before the database even sees the record.
-
-- Decoupled Security: I use python-dotenv to manage credentials. API keys and DB passwords stay in a local .env file, keeping the GitHub repo safe and clean.
-
-- Input Sanitization: Python performs the initial data cleanup, ensuring that only valid, formatted parameters reach the PostgreSQL procedures.
+- **Getting Info**: The scripts find details like genres and IDs from the movie website (TMDB) before sending the data to the database.
+- **Keeping Secrets**: I use a hidden file (`.env`) for my passwords and keys. This keeps them off the internet and safe.
+- **Cleaning Data**: Python checks the data first to make sure it is correct before it reaches the database.
 
 ---
 
