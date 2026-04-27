@@ -13,10 +13,10 @@ When I delete a record, the system uses a special rule to take a snapshot of tha
 If I accidentally delete a show, I can find the saved details in the `series_metadata_audit` table. I keep a simple script in my cheat sheet that takes those saved details and puts them back into the main database exactly as they were before.
 
 ``` SQL
-INSERT INTO cine_registry.series_metadata 
+INSERT INTO entries.series_metadata 
 SELECT * FROM jsonb_populate_record(
-    NULL::cine_registry.series_metadata, 
-    (SELECT original_data FROM cine_registry.series_metadata_audit 
+    NULL::entries.series_metadata, 
+    (SELECT original_data FROM entries.series_metadata_audit 
      WHERE series_code = 'ENTER_CODE_HERE' 
      LIMIT 1)
 );
@@ -51,7 +51,7 @@ Every time I change a record, a rule called `fn_set_last_updated` automatically 
 
 ``` SQL
 SELECT title, series_code, last_updated 
-FROM cine_registry
+FROM entries.series_metadata
 ORDER BY last_updated DESC
 LIMIT 5;
 ```
