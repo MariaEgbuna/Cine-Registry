@@ -3,15 +3,8 @@
 My database, called Cine Registry, is built using PostgreSQL. It makes tracking my movies and shows easy by doing the hard work for me. It uses smart rules to automatically update my watch status and keep track of my binge-watching habits. Instead of keeping messy manual records, I now have one strong and reliable place for all my data.
 
 ---
-## The Architecture
 
-I organized my data into three specific areas:
-
-- Registry: Stores permanent details like titles, years, and directors.
-- Watchlogs: Records my activity, including watch dates, ratings, and rewatch status.
-- Archive: Acts as a backup "black box" that saves copies of any deleted data to keep my history safe.
-
-### How it's wired (ERD)
+## How it's wired (ERD)
 
 ![Cine_Registry ER Diagram](Images/ER%20Diagram.png)
 
@@ -23,7 +16,7 @@ I organized my data into three specific areas:
 | **`series_log`** | The Show Tracker | A record of my daily show watching. |
 | **`movie_log`** | The Film Tracker | A record of when I watch each movie. |
 
-### How it works
+## How it works
 
 - **Easy Show Tracking**: I link the main show list to my logs using IDs. Because I use the ID instead of the title, I only have to set up the show details once. I can then track as many seasons or rewatches as I want without extra typing.
 - **Accurate Dates**: Every entry connects to a calendar table. This makes it easy to create reports for any year.
@@ -61,14 +54,14 @@ I use Python scripts to help the database handle outside information.
 
 ## Deployment, Logic, and Operations
 
-Ready to deploy the schema? Follow the step-by-step instructions to set up your PostgreSQL environment and Python metadata gateway:
+Ready to set up your database? Follow these steps to prepare your PostgreSQL system and connect your Python tools:
 
-- [Deployment & Setup Guide](Docs/getting_started.md)
+- [Deployment & Setup Guide](Docs/getting_started.md): This walks you through building your database step-by-step.
 
-If you want to see the "why" behind the code, check out these deep dives in the docs folder:
+If you are curious about how the system works behind the scenes, take a look at these notes:
 
-- [System Audit](Docs/system_audit.md): My approach to disaster recovery via JSONB snapshots and keeping the engine healthy.
-- [View Architecture & Indexing](Docs/view_indexing.md): A look at how I use GIN indexes for fast genre searching and tiered views for Power BI.
+- [System Audit](Docs/system_audit.md): This explains how I protect your data. If you delete something by mistake, the system has a backup (snapshot) so you can get it back easily.
+- [View Architecture & Indexing](Docs/view_indexing.md): This shows how I use special "shortcuts" (indexes) to make your searches super fast and how I organize the data so your reports in Power BI are quick and easy to read.
 
 ---
 
