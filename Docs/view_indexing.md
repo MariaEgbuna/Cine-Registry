@@ -36,7 +36,7 @@ I used an `EXPLAIN ANALYZE` command to check the database. This shows me exactly
 ``` SQL
 EXPLAIN ANALYZE 
 SELECT movie_title 
-FROM the_receipts_sandbox.movies 
+FROM entries.movie_metadata
 WHERE genre @> ARRAY['Sci-Fi']::text[];
 ```
 
