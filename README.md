@@ -46,7 +46,7 @@ This keeps my "Active" list clean without me needing to do it manually.
 ### 2. The Procedural "Write API"
 I do not add data directly to the tables. Instead, I use special commands that act as a gateway:
 
-- **add_metadata**: Used to add a new show/movie. It makes sure the details are saved before I log any watchlog. This prevents errors where a watch session exists without a show/movie to link to.
+- **add_series** / **add_movie**: Used to add a new show/movie. It makes sure the details are saved before I log any watchlog. This prevents errors where a watch session exists without a show/movie to link to.
 - **series_watch**: Used for my daily updates. It manages everything, like starting a new season or updating the count, to keep my dashboard accurate.
 - **movie_watch**: This has "smart" logic. It checks if I have already seen a movie. If I have, it automatically links the new watch and marks it as a rewatch.
 
