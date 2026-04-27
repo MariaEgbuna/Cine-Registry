@@ -1,19 +1,15 @@
 # A Database with a Brain
 
-Cine Registry is my personal PostgreSQL engine designed to automate the tedious parts of media tracking. Through custom triggers and procedural logic, the database handles my watch statuses and binge-watching stats automatically. It’s about moving away from fragile manual logs and toward a single, bulletproof source of truth.
+My database, called Cine Registry, is built using PostgreSQL. It makes tracking my movies and shows easy by doing the hard work for me. It uses smart rules to automatically update my watch status and keep track of my binge-watching habits. Instead of keeping messy manual records, I now have one strong and reliable place for all my data.
 
 ---
 ## The Architecture
 
-I designed the Cine Registry with a strict separation of concerns. The system differentiates between "one-off" events (Movies) and ongoing, multi-session commitments (Series).
+I organized my data into three specific areas:
 
-- The Registry (Series Metadata): The permanent record for television. Since shows have multiple seasons and rewatches, the "facts" about the show live here to prevent duplication.
-
-- The Action (Watch Logs): The live tracking layer for series. Every session, binge, or casual watch links back to the Registry.
-
-- The Vault (Movies): A self-contained table for film. Since movies are single entries, each record holds both the metadata and the watch data in one place.
-
-- The Safety Net (Audit Layer): Automated "flight recorders" that capture deletions to ensure no data ever truly vanishes.  
+- Registry: Stores permanent details like titles, years, and directors.
+- Watchlogs: Records my activity, including watch dates, ratings, and rewatch status.
+- Archive: Acts as a backup "black box" that saves copies of any deleted data to keep my history safe.
 
 ### How it's wired (ERD)
 
