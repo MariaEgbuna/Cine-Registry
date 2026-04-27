@@ -50,7 +50,7 @@ WHERE genre @> ARRAY['Sci-Fi']::text[];
 
 For heavy reports, like my "Year in Review," I use Materialized Views. Think of these as permanent snapshots of a report. Instead of forcing the database to redo complex math every time I open my dashboard, it saves the final result directly to the disk.
 
-* Why use Materialized Views? *
+*Why use Materialized Views?*
 
 - Speed: Because the results are already saved, loading a full year of history is nearly instant.
 - Indexing: I can add indexes directly to these views, like a B-Tree index on a movie ID, which makes finding specific lifetime stats as fast as looking up a single row in a table.
