@@ -38,7 +38,7 @@ SELECT
     trigger_name, 
     event_manipulation AS event
 FROM information_schema.triggers 
-WHERE trigger_schema = 'cine_registry';
+WHERE trigger_schema = 'entries';
 ```
 
 ---
