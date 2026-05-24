@@ -1,69 +1,67 @@
 # View Architecture and Indexing Strategy
 
-This section explains how I organize my data for analysis and keep my reports running quickly.
+This document covers the analytical layer built on top of the raw tables: the views that Power BI connects to, the GIN index used for genre-based queries, and the materialized views used for retrospective reports.
 
 ---
 
-## 1. The Analytical View Layer
+## 1. Analytical Views
 
-I use "views", which are like saved searches, to combine my old show history with my new logs. This keeps my raw data clean and moves all the complex math into one place, making my dashboard much faster.
+Rather than querying the raw log tables directly from Power BI, I built a view layer that consolidates the joins, calculations, and status logic into clean, flat outputs. This keeps the raw tables normalized and moves the complexity into one place.
 
-### v_series_dashboard: The Health Monitor
+### `v_series_dashboard`: Show Progress Monitor
 
-This is the main view I use for my Power BI reports. It shows me exactly how far along I am with my shows.
+The main view powering the series dashboard in Power BI. It joins `series_metadata` with `series_log` and calculates:
 
-* **Calculated Progress**: It compares my old data (before I started using this system) with my new logs to give me a single completion percentage.
-* **Status Mapping**: It automatically tags a show as "Caught Up" if I have finished all seasons, or "Backlog" if I still have more episodes to watch.
+- A single `completion_percentage` that accounts for both pre-system history (manually entered backlog data) and new log entries
+- A derived status tag: `Caught Up` if all available seasons are finished, `Backlog` if episodes remain
 
-![Series Dashboard](<../Images/Series Dashboard.png>)
+![Series Dashboard](../Images/Series%20Dashboard.png)
 
-### v_resume_list: The Active Queue
+### `v_resume_list`: Active Watch Queue
 
-This is a focused view I use every day. It hides shows that are "On-Hold" or "Dropped" so I can see only what I am currently watching. It also calculates the completion percentage for each show, helping me quickly identify exactly where I left off.
+A focused daily-use view that filters out `On-Hold` and `Dropped` shows, leaving only what's currently active. It also calculates the per-show completion percentage so I can see at a glance exactly where I left off in each series.
 
-![Active Queue Dashboard](<../Images/Resume Dashboard.png>)
+![Resume Dashboard](../Images/Resume%20Dashboard.png)
 
 ---
 
-## 2. GIN Indexing for Genre Discovery
+## 2. GIN Indexing for Genre Queries
 
-Instead of using a separate, complicated table to track genres, I store them in a simple text list (array) directly in the record. To make sure searches are instant, I use a GIN index. This is a special type of index that acts like the index in the back of a book, allowing the database to find specific genres without looking at every single row.
+Genres are stored as a PostgreSQL text array directly on each metadata row (e.g., `ARRAY['Drama', 'Thriller']`), rather than in a separate junction table. This keeps the schema flat and simple.
 
-### The Performance Test
+The trade-off is that array columns aren't natively supported by standard B-Tree indexes. To keep genre-based lookups fast, I created a **GIN (Generalized Inverted Index)** on the `genre` column. A GIN index works like the index at the back of a book, it maps each individual array element to the rows that contain it, so the database can find all rows matching a specific genre without scanning the entire table.
 
-I used an `EXPLAIN ANALYZE` command to check the database. This shows me exactly how it performs a search. It proves that the database is using my index to find the data quickly instead of "brute-forcing" it, which means scanning every single row one by one.
+### Verifying the Index is Being Used
 
-``` SQL
-EXPLAIN ANALYZE 
-SELECT movie_title 
+I used `EXPLAIN ANALYZE` to confirm the query planner is using the GIN index rather than falling back to a sequential scan:
+
+```sql
+EXPLAIN ANALYZE
+SELECT movie_title
 FROM entries.movie_metadata
 WHERE genre @> ARRAY['Sci-Fi']::text[];
 ```
 
-![GIN index](<../Images/Gin Index Analyze.png>)
+![GIN Index Analyze](../Images/Gin%20Index%20Analyze.png)
 
-> The query plan confirms that the database uses a "Bitmap Index Scan." Because of the GIN index, it skips the irrelevant rows and finds the exact "Sci-Fi" records in under 1ms. This keeps my database structure simple and flat without slowing down as I add more entries to my registry.
+The query plan shows a **Bitmap Index Scan** on the GIN index, meaning the database resolves the `Sci-Fi` filter from the index alone before touching the table. On this dataset the query resolves in under 1ms.
 
 ---
 
-## 3. Materialized Snapshots
+## 3. Materialized Views for Retrospective Reports
 
-For heavy reports, like my "Year in Review," I use Materialized Views. Think of these as permanent snapshots of a report. Instead of forcing the database to redo complex math every time I open my dashboard, it saves the final result directly to the disk.
+For heavier aggregations -- like a full year of watch history, I use materialized views. Unlike regular views (which re-execute their query every time they're accessed), a materialized view stores the query result physically on disk. Loading a year's worth of watch history becomes a single table read rather than a repeated multi-table join.
 
-*Why use Materialized Views?*
+I also add a B-Tree index on the materialized view's primary key column (`movie_id`), which makes point lookups for individual film statistics as fast as a single row fetch.
 
-- Speed: Because the results are already saved, loading a full year of history is nearly instant.
-- Indexing: I can add indexes directly to these views, like a B-Tree index on a movie ID, which makes finding specific lifetime stats as fast as looking up a single row in a table.
+The materialized view needs to be refreshed manually after new data is added:
 
-### mv_2025_movie_retrospective: Flattened History
+```sql
+REFRESH MATERIALIZED VIEW entries.mv_2025_movie_retrospective;
+```
 
-This view is my 2025 time capsule. It combines all my watch logs with a date calendar so I can easily see how my viewing habits changed from month to month.
+### `mv_2025_movie_retrospective` -- 2025 Watch History
+
+This materialized view joins `movie_log` with `dates_table` to produce a flat, pre-aggregated table of every movie watched in 2025. Each row includes the watch month, completion status, and rewatch flag, all pre-calculated so Power BI doesn't have to re-derive them on every report load.
 
 ![Movie Retrospective Data](../Images/2025%20mv.png)
-> Insight: The 2025 Retrospective view does the "boring" work for me. It automatically gathers information like the month, whether I finished a movie, and if I watched it again. It saves all of this into one simple, neat table so I do not have to do it manually.
-
----
-
-*Document Version: 1.0.0*  
-*Maintained by Maria*  
-*Analytics Engineering Portfolio*
