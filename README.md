@@ -1,78 +1,89 @@
-# A Database with a Brain
+# Cine Registry
 
-My database, called Cine Registry, is built using PostgreSQL. It makes tracking my movies and shows easy by doing the hard work for me. It uses smart rules to automatically update my watch status and keep track of my binge-watching habits. Instead of keeping messy manual records, I now have one strong and reliable place for all my data.
-
----
-
-## How it's wired (ERD)
-
-![Cine_Registry ER Diagram](Images/ER%20Diagram.png)
-
-| Component | Role | Why it exists |
-| :--- | :--- | :--- |
-| **`dates_table`** | The Calendar | A central timeline to track when I watch things. |
-| **`series_metadata`** | The Show List | A master list of all my shows so there are no duplicates. |
-| **`movie_metadata`** | The Film Vault | A list of all my movies registered to the db. No duplicates. |
-| **`series_log`** | The Show Tracker | A record of my daily show watching. |
-| **`movie_log`** | The Film Tracker | A record of when I watch each movie. |
-
-## How it works
-
-- **Easy Show Tracking**: I link the main show list to my logs using IDs. Because I use the ID instead of the title, I only have to set up the show details once. I can then track as many seasons or rewatches as I want without extra typing.
-- **Accurate Dates**: Every entry connects to a calendar table. This makes it easy to create reports for any year.
-- **Safety Records**: I have "audit" tables for everything. If I delete something by mistake, the system keeps a copy so I never lose my data.
-- **Automatic Updates**: I use IDs from a movie database (TMDB). This helps my system talk to other sites to get info automatically.
+A personal movie and TV show tracking system built on PostgreSQL, with Python handling the data pipeline. Instead of maintaining manual lists, I built a proper relational database that automates the tedious parts: status updates, rewatch detection, audit logging, and feeds clean data directly into Power BI dashboards.
 
 ---
 
-## Keeping Data Correct and Automatic
+## How It's Wired (ERD)
 
-This database approach stops manual work and reduces mistakes.
+![Cine Registry ER Diagram](Images/ER%20Diagram.png)
 
-### 1. The Progress Protector
-I created a rule called `fn_progress_protector`. When the number of episodes I have watched matches the total number of episodes in a show, the system automatically:
-
-- Marks the show as 'Finished'.
-- Adds an end date to the record.
-This keeps my "Active" list clean without me needing to do it manually.
-
-### 2. The Procedural "Write API"
-I do not add data directly to the tables. Instead, I use special commands that act as a gateway:
-
-- **add_series** / **add_movie**: Used to add a new show/movie. It makes sure the details are saved before I log any watchlog. This prevents errors where a watch session exists without a show/movie to link to.
-- **series_watch**: Used for my daily updates. It manages everything, like starting a new season or updating the count, to keep my dashboard accurate.
-- **movie_watch**: This has "smart" logic. It checks if I have already seen a movie. If I have, it automatically links the new watch and marks it as a rewatch.
-
-### 3. The Python Gateway (Security)
-I use Python scripts to help the database handle outside information.
-
-- **Getting Info**: The scripts find details like genres and IDs from the movie website (TMDB) before sending the data to the database.
-- **Keeping Secrets**: I use a hidden file (`.env`) for my passwords and keys. This keeps them off the internet and safe.
-- **Cleaning Data**: Python checks the data first to make sure it is correct before it reaches the database.
+| Table | What it stores | Role in the system |
+|-------|---------------|-------------------|
+| `dates_table` | A pre-generated calendar of dates | Central time reference for all watch logs; enables date-based reporting without messy joins |
+| `series_metadata` | One row per show: title, TMDB ID, genre array, total episodes, etc. | The master show registry; prevents duplicate entries and acts as the FK reference for all series logs |
+| `movie_metadata` | One row per film: title, TMDB ID, genre array, runtime, etc. | The master film registry, same principle as series_metadata |
+| `series_log` | One row per watch session for a show | Tracks episode progress, season, and watch date; links to both series_metadata and dates_table |
+| `movie_log` | One row per movie watch | Tracks watch date, rewatch flag, and completion; links to movie_metadata and dates_table |
 
 ---
 
-## Deployment, Logic, and Operations
+## Project Structure
 
-Ready to set up your database? Follow these steps to prepare your PostgreSQL system and connect your Python tools:
+```
+Cine-Registry/
+├── SQL/
+│   ├── 01_schema.sql        -- Table definitions, constraints, and foreign keys
+│   ├── 02_triggers.sql      -- PL/pgSQL trigger functions (status updates, audit logging, timestamps)
+│   ├── 03_procedures.sql    -- Stored procedures used as the write API (add_series, movie_watch, etc.)
+│   └── 04_sample_data.sql   -- Test data and verification scripts
+├── Python/
+│   ├── movie_logger.py      -- Fetches movie details from TMDB and calls movie_watch procedure
+│   └── add_series.py        -- Fetches show details from TMDB and calls add_series procedure
+├── Docs/
+│   ├── getting_started.md   -- Setup and deployment guide
+│   ├── system_audit.md      -- Audit logging, data recovery, and trigger health checks
+│   └── view_indexing.md     -- Analytical views, GIN indexing, and materialized views
+├── Images/
+├── .gitignore
+└── README.md
+```
 
-- [Deployment & Setup Guide](Docs/getting_started.md): This walks you through building your database step-by-step.
+---
 
-If you are curious about how the system works behind the scenes, take a look at these notes:
+## How It Works
 
-- [System Audit](Docs/system_audit.md): This explains how to protect your data. If you delete something by mistake, the system has a backup (snapshot) so you you can get it back easily.
-- [View Architecture & Indexing](Docs/view_indexing.md): This shows how I use special "shortcuts" (indexes) to make your searches super fast and how I organize the data so your reports in Power BI are quick and easy to read.
+### Controlled Writes via Stored Procedures
+
+I don't write directly to the tables. All data goes through PL/pgSQL stored procedures that act as a controlled write API:
+
+- `add_series` / `add_movie`: Registers a new title in the metadata table before any watch log can reference it. This enforces referential integrity at the application level, not just through database constraints.
+- `series_watch`: Handles the full lifecycle of a watch session: starts a new season record if needed, increments the episode counter, and triggers the status update logic.
+- `movie_watch`: Includes rewatch detection. If the movie already exists in the log, it automatically links the new session to the original record and flags it as a rewatch.
+
+### Automation via PL/pgSQL Triggers
+
+Three trigger functions run automatically on data changes:
+
+- `fn_progress_protector`: Fires after each `series_log` update. If `episodes_watched` matches `total_episodes`, it sets the status to `Finished` and stamps the end date. No manual updates needed.
+- `fn_set_last_updated`: Fires on any row update across the main tables. Records the exact timestamp using the database server clock, independent of the application layer.
+- Audit triggers: Fire on `DELETE` operations. Serialize the deleted row as JSONB and write it to a corresponding audit table (`series_metadata_audit`, `movie_metadata_audit`), enabling full data recovery.
+
+### Python as the Data Pipeline
+
+The Python scripts sit between the TMDB API and the database:
+
+- Fetch structured metadata (genres, runtime, episode counts, TMDB IDs) from the TMDB API before any insert
+- Validate and clean the incoming data
+- Call the appropriate stored procedure with the cleaned payload
+- Credentials are managed via a `.env` file (excluded from version control via `.gitignore`)
+
+---
+
+## Docs
+
+| Document | What it covers |
+|----------|---------------|
+| [Deployment & Setup Guide](Docs/getting_started.md) | Prerequisites, SQL execution order, Python setup, and verification steps |
+| [System Audit](Docs/system_audit.md) | Audit trigger design, data recovery workflow, and trigger health checks |
+| [View Architecture & Indexing](Docs/view_indexing.md) | Analytical views for Power BI, GIN indexing for genre arrays, and materialized views for retrospective reports |
 
 ---
 
 ## Tech Stack
 
-- **Language:** SQL / PL/pgSQL, Python
 - **Database:** PostgreSQL 17
-- **APIs:** TMDB API
+- **Database Language:** SQL / PL/pgSQL
+- **Scripting:** Python 3
+- **External API:** TMDB API
 - **Tooling:** DBeaver, VS Code
-
----
-
-*Maintained by Maria  
-Self-Taught Analyst & SQL Enthusiast*
