@@ -267,38 +267,6 @@ CREATE TRIGGER trg_progress_protector
 BEFORE INSERT OR UPDATE ON entries.series_log 
 FOR EACH ROW EXECUTE FUNCTION entries.fn_progress_protector();
 
--- ===========================================================================
-
--- 	MOVIE LOG STATUS
-CREATE OR REPLACE FUNCTION entries.fn_sync_movie_status()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_movie_id INTEGER; 
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        v_movie_id := OLD.movie_id;
-    ELSE
-        v_movie_id := NEW.movie_id;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM entries.movie_log WHERE movie_id = v_movie_id) THEN
-        UPDATE entries.movie_metadata 
-        SET status = 'Logged' 
-        WHERE movie_id = v_movie_id;
-    ELSE
-        UPDATE entries.movie_metadata 
-        SET status = 'Backlog' 
-        WHERE movie_id = v_movie_id;
-    END IF;
-
-    RETURN NULL; 
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_sync_movie_status
-AFTER INSERT OR UPDATE OR DELETE ON entries.movie_log
-FOR EACH ROW EXECUTE FUNCTION entries.fn_sync_movie_status();
-
 -- ============================================================
 
 -- MOVIE LOG REWATCH STAMP
