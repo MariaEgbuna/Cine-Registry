@@ -28,7 +28,7 @@ Cine-Registry/
 │   ├── 03_procedures.sql    -- Stored procedures used as the write API (add_series, movie_watch, etc.)
 │   └── 04_sample_data.sql   -- Test data and verification scripts
 ├── Python/
-│   ├── movie_logger.py      -- Fetches movie details from TMDB and calls movie_watch procedure
+│   ├── add_movie.py         -- Fetches movie details from TMDB and calls add_movie procedure
 │   └── add_series.py        -- Fetches show details from TMDB and calls add_series procedure
 ├── Docs/
 │   ├── getting_started.md   -- Setup and deployment guide
