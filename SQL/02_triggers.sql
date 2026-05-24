@@ -4,15 +4,12 @@
 CREATE OR REPLACE FUNCTION entries.fn_clean_dates_logic()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.day_of_week := TRIM(TO_CHAR(NEW.date_key, 'Day'));
-    NEW.month_name  := TRIM(TO_CHAR(NEW.date_key, 'Month'));
     NEW.day_short   := TO_CHAR(NEW.date_key, 'Dy');
     NEW.month_short := TO_CHAR(NEW.date_key, 'Mon');
     NEW.is_weekend  := EXTRACT(ISODOW FROM NEW.date_key) IN (6, 7);
     NEW.day_of_week_index := (EXTRACT(ISODOW FROM NEW.date_key) - 1)::SMALLINT;
     NEW.date_year := EXTRACT(YEAR FROM NEW.date_key)::SMALLINT;
     NEW.month_num := EXTRACT(MONTH FROM NEW.date_key)::SMALLINT;
-    NEW.day_num   := EXTRACT(DAY FROM NEW.date_key)::SMALLINT;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
