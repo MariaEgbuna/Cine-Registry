@@ -12,10 +12,7 @@ CREATE TABLE entries.dates_table (
     quarters SMALLINT NOT NULL CHECK (quarters BETWEEN 1 AND 4),
     month_num SMALLINT NOT NULL CHECK (month_num BETWEEN 1 AND 12),
     month_short CHAR(3) NOT NULL,
-    month_name VARCHAR(10),
-    day_num SMALLINT CHECK (day_num BETWEEN 1 AND 31),
     day_short CHAR(3) NOT NULL,
-    day_of_week VARCHAR(10),
     day_of_week_index SMALLINT NOT NULL CHECK (day_of_week_index BETWEEN 1 AND 7),
     is_weekend BOOLEAN NOT NULL
 );
