@@ -5,7 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS entries;
 SET search_path TO entries, public;
 
-/*CALENDAR ASPECT (DATES TABLE)*/
+-- 0. Dates Table
 CREATE TABLE entries.dates_table (
     date_key DATE PRIMARY KEY,
     date_year SMALLINT NOT NULL CHECK (date_year >= 2025),
@@ -17,8 +17,8 @@ CREATE TABLE entries.dates_table (
     is_weekend BOOLEAN NOT NULL
 );
 
-/*  SERIES ARCHITECTURE: METADATA, AUDIT, AND VIEWING LOGS
-================================================================================*/
+-- ================================================================================
+
 -- 1. Series Metadata Table
 CREATE TABLE entries.series_metadata (
     series_id SERIAL PRIMARY KEY, 
@@ -42,18 +42,7 @@ CREATE INDEX idx_genre ON entries.series_metadata USING GIN (genres);
 CREATE INDEX idx_platform ON entries.series_metadata (platform);
 CREATE INDEX idx_series_title ON entries.series_metadata (title);
 
--- 2. Audit System
-CREATE TABLE entries.series_metadata_audit (
-    audit_id BIGSERIAL PRIMARY KEY,
-    series_id INT, 
-    series_code VARCHAR(20),
-    title TEXT,
-    deleted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_by TEXT NOT NULL DEFAULT CURRENT_USER,
-    original_data JSONB
-);
-
--- 3. Series Log
+-- 2. Series Log
 CREATE TABLE entries.series_log (
     log_id SERIAL PRIMARY KEY,
     series_id INTEGER NOT NULL REFERENCES entries.series_metadata(series_id) ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -76,22 +65,9 @@ CREATE INDEX idx_series_log_id ON entries.series_log (series_id);
 CREATE INDEX idx_series_log_status ON entries.series_log (watch_status);
 CREATE INDEX idx_series_log_dates ON entries.series_log (start_date, end_date);
 
--- 4. Audit System
-CREATE TABLE entries.series_log_audit (
-    audit_id SERIAL PRIMARY KEY,
-    log_id INTEGER,
-    series_id INTEGER,
-    season_no INTEGER,
-    watch_status VARCHAR(20),
-    is_rewatch BOOLEAN,
-    operation TEXT, -- Captures 'UPDATE' or 'DELETE'
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    changed_by TEXT DEFAULT CURRENT_USER
-);
+-- ================================================================================
 
-/* MOVIE ARCHITECTURE: METADATA, AUDIT, AND VIEWING LOGS
-================================================================================*/
--- 1. Movie Metadata
+-- 3. Movie Metadata
 CREATE TABLE entries.movie_metadata ( 
     movie_id SERIAL PRIMARY KEY,
     movie_code VARCHAR(20) UNIQUE NOT NULL,
@@ -110,17 +86,7 @@ CREATE INDEX idx_movie_metadata_country ON entries.movie_metadata (country);
 CREATE INDEX idx_movie_metadata_year ON entries.movie_metadata (year_released);
 CREATE INDEX idx_movie_genres ON entries.movie_metadata USING GIN (genres);
 
--- 2. Audit System
-CREATE TABLE entries.movies_audit (
-    audit_id      BIGSERIAL PRIMARY KEY,
-    movie_id      INTEGER NOT NULL,
-    movie_title   TEXT,
-    deleted_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_by    TEXT NOT NULL DEFAULT CURRENT_USER,
-    original_data JSONB  
-);
-
--- 3. Movie Log
+-- 4. Movie Log
 CREATE TABLE entries.movie_log ( 
     log_id SERIAL PRIMARY KEY,
     movie_id INTEGER NOT NULL REFERENCES entries.movie_metadata(movie_id) ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -137,3 +103,30 @@ CREATE TABLE entries.movie_log (
 
 CREATE INDEX idx_movie_started_log_date ON entries.movie_log (date_watched);
 CREATE INDEX idx_movie_finished_log_date ON entries.movie_log (date_finished);
+
+-- ================================================================================
+
+-- 5. Audit Tables (Recycle Bins)
+CREATE TABLE entries.metadata_audit (
+    audit_id      BIGSERIAL PRIMARY KEY,
+    entity_id     INTEGER NOT NULL,
+    content_type  TEXT NOT NULL CHECK (content_type IN ('series', 'movie')),
+    deleted_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_by    TEXT NOT NULL DEFAULT CURRENT_USER,
+    original_data JSONB
+);
+
+CREATE INDEX idx_metadata_audit_lookup ON entries.metadata_audit(content_type, entity_id);
+
+CREATE TABLE entries.log_audit (
+    audit_id      BIGSERIAL PRIMARY KEY,
+    log_id        INTEGER NOT NULL,
+    entity_id     INTEGER NOT NULL,
+    content_type  TEXT NOT NULL CHECK (content_type IN ('series', 'movie')),
+    deleted_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_by    TEXT NOT NULL DEFAULT CURRENT_USER,
+    row_data      JSONB
+);
+
+CREATE INDEX idx_log_audit_log_id ON entries.log_audit(log_id);
+CREATE INDEX idx_log_audit_lookup ON entries.log_audit(content_type, entity_id);
