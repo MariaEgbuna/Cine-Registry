@@ -1,5 +1,3 @@
--- STORED PROCEDURES
-
 -- add_series (Series Metadata Intake): Registers new TV show into the series_metadata table.
 CREATE OR REPLACE PROCEDURE entries.add_series(
     p_title          TEXT, 
@@ -131,8 +129,7 @@ CREATE OR REPLACE PROCEDURE entries.add_movie(
     p_director      TEXT DEFAULT 'Unknown',
     p_runtime_mins  INTEGER DEFAULT NULL,
     p_genres        TEXT[] DEFAULT NULL,
-    p_tmdb_id       INTEGER DEFAULT NULL,
-    p_status        TEXT DEFAULT 'Backlog'
+    p_tmdb_id       INTEGER DEFAULT NULL
 )
 LANGUAGE plpgsql
 AS $procedure$
@@ -163,11 +160,11 @@ BEGIN
 
     INSERT INTO entries.movie_metadata (
         title, year_released, country, director, 
-        runtime_mins, genres, tmdb_id, status
+        runtime_mins, genres, tmdb_id
     )
     VALUES (
         p_title, p_year::SMALLINT, v_clean_country, p_director,
-        p_runtime_mins::SMALLINT, v_clean_genres, p_tmdb_id, p_status
+        p_runtime_mins::SMALLINT, v_clean_genres, p_tmdb_id
     )
     RETURNING movie_id INTO v_new_id;
 
