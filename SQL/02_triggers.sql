@@ -270,20 +270,20 @@ CREATE TRIGGER trg_audit_series_delete
 BEFORE DELETE ON entries.series_metadata 
 FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_series_deletion();
 
--- 2. MOVIE LOG AUDIT
+-- 2. MOVIE METADATA AUDIT
 CREATE OR REPLACE FUNCTION entries.fn_audit_movie_deletion()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO entries.movies_audit 
-   ( movie_id, original_data )
+   ( movie_id, movie_title, original_data )
     VALUES 
-   ( OLD.movie_id, to_jsonb(OLD) );
+   ( OLD.movie_id, OLD.title, to_jsonb(OLD) );
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_audit_movie_delete 
-BEFORE DELETE ON entries.movie_log 
+BEFORE DELETE ON entries.movie_metadata
 FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_movie_deletion();
 
 -- 3. SERIES LOG AUDIT
