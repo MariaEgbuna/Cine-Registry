@@ -42,7 +42,7 @@ def add_series():
             search_params["first_air_date_year"] = int(year_input)
             
         try:
-            res = requests.get(search_url, params=search_params, timeout=10).json()
+            res = requests.get(search_url, params=search_params, timeout=30).json()
             results = res.get('results', [])
         except Exception as e:
             print(f"API Connection Error: {e}")
@@ -64,7 +64,7 @@ def add_series():
     
     # --- FETCH METADATA ---
     detail_params = {"api_key": TMDB_API_KEY, "language": "en-US"}
-    d = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params=detail_params, timeout=10).json()
+    d = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params=detail_params, timeout=30).json()
     
     title = d.get('name')
     year_released = int(d.get('first_air_date', '0000')[:4]) 
