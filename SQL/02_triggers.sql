@@ -1,4 +1,47 @@
--- Trigger Functions
+-- AUDIT SYSTEM
+CREATE OR REPLACE FUNCTION entries.fn_audit_deletions()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'series_metadata' THEN
+        INSERT INTO entries.metadata_audit (entity_id, content_type, original_data)
+        VALUES (OLD.series_id, 'series', to_jsonb(OLD));
+
+    ELSIF TG_TABLE_NAME = 'movie_metadata' THEN
+        INSERT INTO entries.metadata_audit (entity_id, content_type, original_data)
+        VALUES (OLD.movie_id, 'movie', to_jsonb(OLD));
+
+    ELSIF TG_TABLE_NAME = 'series_log' THEN
+        INSERT INTO entries.log_audit (log_id, entity_id, content_type, row_data)
+        VALUES (OLD.log_id, OLD.series_id, 'series', to_jsonb(OLD));
+
+    ELSIF TG_TABLE_NAME = 'movie_log' THEN
+        INSERT INTO entries.log_audit (log_id, entity_id, content_type, row_data)
+        VALUES (OLD.log_id, OLD.movie_id, 'movie', to_jsonb(OLD) );
+    END IF;
+    
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Metadata Triggers (Registry Schema)
+CREATE TRIGGER trg_audit_series_metadata
+AFTER DELETE ON entries.series_metadata
+FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_deletions();
+
+CREATE TRIGGER trg_audit_movie_metadata
+AFTER DELETE ON entries.movie_metadata
+FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_deletions();
+
+-- Log Triggers (Watchlogs Schema)
+CREATE TRIGGER trg_audit_series_log
+AFTER DELETE ON entries.series_log
+FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_deletions();
+
+CREATE TRIGGER trg_audit_movie_log
+AFTER DELETE ON entries.movie_log
+FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_deletions();
+
+-- ==================================================================
 
 -- CALENDAR MANAGEMENT
 CREATE OR REPLACE FUNCTION entries.fn_clean_dates_logic()
@@ -18,154 +61,124 @@ CREATE TRIGGER trg_clean_dates
 BEFORE INSERT OR UPDATE ON entries.dates_table 
 FOR EACH ROW EXECUTE FUNCTION entries.fn_clean_dates_logic();
 
+-- ==================================================================
 
---  ID GENERATION LOGIC
-CREATE OR REPLACE FUNCTION entries.fn_generate_unique_id()
+CREATE OR REPLACE FUNCTION entries.fn_process_metadata()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_title       TEXT;
-    v_year        TEXT;
-    v_clean_title TEXT;
-    v_base_prefix TEXT;
-    v_base_code   TEXT;
-    v_final_code  TEXT;
-    v_next_num    INTEGER;
-    v_existing_id TEXT;
+    -- Sanitization Variables
+    v_title_parts   TEXT[];
+    v_dir_parts     TEXT[];
+    v_genre_item    TEXT;
+    v_split_genre   TEXT;
+    v_cleaned_genres TEXT[] := '{}';
+    -- ID Generation Variables
+    v_clean_title   TEXT;
+    v_base_prefix   TEXT;
+    v_base_code     TEXT;
+    v_final_code    TEXT;
+    v_next_num      INTEGER;
+    v_existing_id   TEXT;
 BEGIN
-    -- MOVIE METADATA LOGIC
-    IF TG_TABLE_NAME = 'movie_metadata' THEN
-        SELECT movie_code INTO v_existing_id FROM entries.movie_metadata
-         WHERE title = NEW.title AND year_released = NEW.year_released LIMIT 1;
-        
-        IF v_existing_id IS NOT NULL THEN
-            NEW.movie_code := v_existing_id;
-            RETURN NEW;
-        END IF;
-
-        -- Respect manually provided codes if they already exist
-        IF NEW.movie_code IS NOT NULL AND TRIM(NEW.movie_code) != '' THEN 
-            RETURN NEW; 
-        END IF;
-
-        v_title := NEW.title;
-        v_year := RIGHT(NEW.year_released::TEXT, 2);
-        v_clean_title := REGEXP_REPLACE(TRIM(v_title), '^\s*(the|a|an)\s+', '', 'i');
-        v_clean_title := REGEXP_REPLACE(v_clean_title, '[^a-zA-Z0-9]', '', 'g');
-        v_base_prefix := UPPER(RPAD(LEFT(v_clean_title, 3), 3, 'X'));
-        v_base_code := v_base_prefix || '-' || v_year;
-
-        IF EXISTS (SELECT 1 FROM entries.movie_metadata WHERE movie_code = v_base_code
-                   UNION ALL
-                   SELECT 1 FROM entries.series_metadata WHERE series_code = v_base_code) THEN
-            SELECT COALESCE(MAX(CAST(SUBSTRING(movie_code FROM '-([0-9]+)$') AS INTEGER)), 0) + 1
-              INTO v_next_num FROM entries.movie_metadata
-             WHERE movie_code ~ ('^' || v_base_code || '-[0-9]+$');
-            
-            v_final_code := v_base_code || '-' || COALESCE(v_next_num, 1);
-        ELSE
-            v_final_code := v_base_code;
-        END IF;
-        
-        NEW.movie_code := v_final_code;
-
-    -- SERIES METADATA LOGIC
-    ELSIF TG_TABLE_NAME = 'series_metadata' THEN
-        IF NEW.series_code IS NOT NULL AND TRIM(NEW.series_code) != '' THEN
-            RETURN NEW;
-        END IF;
-
-        v_title       := NEW.title;
-        v_year        := RIGHT(NEW.year_released::TEXT, 2);
-        v_clean_title := REGEXP_REPLACE(TRIM(v_title), '^\s*(the|a|an)\s+', '', 'i');
-        v_clean_title := REGEXP_REPLACE(v_clean_title, '[^a-zA-Z0-9]', '', 'g');
-        v_base_prefix := UPPER(RPAD(LEFT(v_clean_title, 3), 3, 'X')); 
-        v_base_code   := v_base_prefix || '-' || v_year;
-
-        IF EXISTS (SELECT 1 FROM entries.series_metadata WHERE series_code = v_base_code
-                   UNION ALL
-                   SELECT 1 FROM entries.movie_metadata WHERE movie_code = v_base_code) THEN
-            SELECT COALESCE(MAX(CAST(SUBSTRING(series_code FROM '-([0-9]+)$') AS INTEGER)), 0) + 1
-              INTO v_next_num FROM entries.series_metadata
-             WHERE series_code ~ ('^' || v_base_code || '-[0-9]+$');
-
-            v_final_code := v_base_code || '-' || COALESCE(v_next_num, 1);
-        ELSE
-            v_final_code := v_base_code;
-        END IF;
-
-        NEW.series_code := v_final_code;
-    END IF;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER trg_generate_series_code 
-BEFORE INSERT ON entries.series_metadata 
-FOR EACH ROW EXECUTE FUNCTION entries.fn_generate_unique_id();
-
-CREATE OR REPLACE TRIGGER trg_generate_movie_code 
-BEFORE INSERT ON entries.movie_metadata
-FOR EACH ROW EXECUTE FUNCTION entries.fn_generate_unique_id();
-
-
---  DATA SANITIZATION & CLEANING
-CREATE OR REPLACE FUNCTION entries.fn_sanitize_registry_entries()
-RETURNS trigger AS $$
-DECLARE
-    title_parts text[];
-    director_parts text[];
-    genre_item text;
-    split_genre text;
-    cleaned_genres text[] := '{}';
-BEGIN
-    NEW.title := initcap(trim(NEW.title));
-    -- Fix 'T, 'S, etc. 
-    title_parts := string_to_array(NEW.title, '''');
-    IF array_length(title_parts, 1) > 1 THEN
-        FOR i IN 2..array_length(title_parts, 1) LOOP
-            title_parts[i] := lower(left(title_parts[i], 1)) || substr(title_parts[i], 2);
+    NEW.title := INITCAP(TRIM(NEW.title));
+    v_title_parts := STRING_TO_ARRAY(NEW.title, '''');
+    IF ARRAY_LENGTH(v_title_parts, 1) > 1 THEN
+        FOR i IN 2..ARRAY_LENGTH(v_title_parts, 1) LOOP
+            v_title_parts[i] := LOWER(LEFT(v_title_parts[i], 1)) || SUBSTR(v_title_parts[i], 2);
         END LOOP;
-        NEW.title := array_to_string(title_parts, '''');
+        NEW.title := ARRAY_TO_STRING(v_title_parts, '''');
     END IF;
-    -- Fix Roman Numerals and 'vs'
-    NEW.title := regexp_replace(NEW.title, '\yIii\y', 'III', 'g');
-    NEW.title := regexp_replace(NEW.title, '\yIi\y', 'II', 'g');
-    NEW.title := regexp_replace(NEW.title, '\yIv\y', 'IV', 'g');
-    NEW.title := regexp_replace(NEW.title, '\yVs\y', 'vs', 'g');
-    -- This handles the "&" split and forces "SciFi" as the default
+
+    NEW.title := REGEXP_REPLACE(NEW.title, '\yIii\y', 'III', 'g');
+    NEW.title := REGEXP_REPLACE(NEW.title, '\yIi\y', 'II', 'g');
+    NEW.title := REGEXP_REPLACE(NEW.title, '\yIv\y', 'IV', 'g');
+    NEW.title := REGEXP_REPLACE(NEW.title, '\yVs\y', 'vs', 'g');
+
     IF NEW.genres IS NOT NULL THEN
-        FOREACH genre_item IN ARRAY NEW.genres LOOP
-            -- Split by ampersand and iterate through results
-            FOREACH split_genre IN ARRAY string_to_array(genre_item, '&') LOOP
-                split_genre := trim(split_genre);
-                -- Normalize Sci-Fi variants to "SciFi"
-                IF split_genre ~* 'Sci-Fi|Sci Fi|SciFi' THEN split_genre := 'SciFi';
+        FOREACH v_genre_item IN ARRAY NEW.genres LOOP
+            FOREACH v_split_genre IN ARRAY STRING_TO_ARRAY(v_genre_item, '&') LOOP
+                v_split_genre := TRIM(v_split_genre);
+                IF v_split_genre ~* 'Sci-Fi|Sci Fi|SciFi|Science Fiction' THEN
+                    v_split_genre := 'SciFi';
                 ELSE
-                    split_genre := initcap(split_genre);
+                    v_split_genre := INITCAP(v_split_genre);
                 END IF;
-                IF NOT (cleaned_genres @> ARRAY[split_genre]) THEN
-                    cleaned_genres := array_append(cleaned_genres, split_genre);
+                IF NOT (v_cleaned_genres @> ARRAY[v_split_genre]) THEN
+                    v_cleaned_genres := ARRAY_APPEND(v_cleaned_genres, v_split_genre);
                 END IF;
             END LOOP;
         END LOOP;
-        NEW.genres := cleaned_genres;
+        NEW.genres := v_cleaned_genres;
     END IF;
 
     IF TG_TABLE_NAME = 'series_metadata' THEN
         IF NEW.platform IS NOT NULL THEN
-            NEW.platform := upper(trim(NEW.platform));
+            NEW.platform := UPPER(TRIM(NEW.platform));
         END IF;
-
     ELSIF TG_TABLE_NAME = 'movie_metadata' THEN
         IF NEW.director IS NOT NULL THEN
-            NEW.director := initcap(trim(NEW.director));
-            director_parts := string_to_array(NEW.director, '''');
-            IF array_length(director_parts, 1) > 1 THEN
-                FOR i IN 2..array_length(director_parts, 1) LOOP
-                    director_parts[i] := lower(left(director_parts[i], 1)) || substr(director_parts[i], 2);
+            NEW.director := INITCAP(TRIM(NEW.director));
+            v_dir_parts := STRING_TO_ARRAY(NEW.director, '''');
+            IF ARRAY_LENGTH(v_dir_parts, 1) > 1 THEN
+                FOR i IN 2..ARRAY_LENGTH(v_dir_parts, 1) LOOP
+                    v_dir_parts[i] := LOWER(LEFT(v_dir_parts[i], 1)) || SUBSTR(v_dir_parts[i], 2);
                 END LOOP;
-                NEW.director := array_to_string(director_parts, '''');
+                NEW.director := ARRAY_TO_STRING(v_dir_parts, '''');
+            END IF;
+        END IF;
+        IF NEW.country IS NOT NULL THEN
+            NEW.country := UPPER(TRIM(NEW.country));
+        END IF;
+    END IF;
+
+    -- ==========================================
+    IF TG_OP = 'INSERT' THEN
+
+        IF TG_TABLE_NAME = 'movie_metadata' THEN
+            SELECT movie_code INTO v_existing_id FROM entries.movie_metadata
+             WHERE title = NEW.title AND year_released = NEW.year_released LIMIT 1;
+            
+            IF v_existing_id IS NOT NULL THEN
+                NEW.movie_code := v_existing_id;
+            END IF;
+            
+            IF NEW.movie_code IS NULL OR TRIM(NEW.movie_code) = '' THEN
+                v_clean_title := REGEXP_REPLACE(TRIM(NEW.title), '^\s*(the|a|an)\s+', '', 'i');
+                v_clean_title := REGEXP_REPLACE(v_clean_title, '[^a-zA-Z0-9]', '', 'g');
+                v_base_prefix := UPPER(RPAD(LEFT(v_clean_title, 3), 3, 'X'));
+                v_base_code   := v_base_prefix || '-' || RIGHT(NEW.year_released::TEXT, 2);
+
+                -- Global Collision Check
+                IF EXISTS (SELECT 1 FROM entries.movie_metadata WHERE movie_code = v_base_code
+                           UNION ALL
+                           SELECT 1 FROM entries.series_metadata WHERE series_code = v_base_code) THEN
+                    SELECT COALESCE(MAX(CAST(SUBSTRING(movie_code FROM '-([0-9]+)$') AS INTEGER)), 0) + 1
+                      INTO v_next_num FROM entries.movie_metadata
+                     WHERE movie_code ~ ('^' || v_base_code || '-[0-9]+$');
+                    NEW.movie_code := v_base_code || '-' || COALESCE(v_next_num, 1);
+                ELSE
+                    NEW.movie_code := v_base_code;
+                END IF;
+            END IF;
+
+        ELSIF TG_TABLE_NAME = 'series_metadata' THEN
+            IF NEW.series_code IS NULL OR TRIM(NEW.series_code) = '' THEN
+                v_clean_title := REGEXP_REPLACE(TRIM(NEW.title), '^\s*(the|a|an)\s+', '', 'i');
+                v_clean_title := REGEXP_REPLACE(v_clean_title, '[^a-zA-Z0-9]', '', 'g');
+                v_base_prefix := UPPER(RPAD(LEFT(v_clean_title, 3), 3, 'X'));
+                v_base_code   := v_base_prefix || '-' || RIGHT(NEW.year_released::TEXT, 2);
+
+                -- Global Collision Check
+                IF EXISTS (SELECT 1 FROM entries.series_metadata WHERE series_code = v_base_code
+                           UNION ALL
+                           SELECT 1 FROM entries.movie_metadata WHERE movie_code = v_base_code) THEN
+                    SELECT COALESCE(MAX(CAST(SUBSTRING(series_code FROM '-([0-9]+)$') AS INTEGER)), 0) + 1
+                      INTO v_next_num FROM entries.series_metadata
+                     WHERE series_code ~ ('^' || v_base_code || '-[0-9]+$');
+                    NEW.series_code := v_base_code || '-' || COALESCE(v_next_num, 1);
+                ELSE
+                    NEW.series_code := v_base_code;
+                END IF;
             END IF;
         END IF;
     END IF;
@@ -174,13 +187,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_sanitize_series 
-BEFORE INSERT OR UPDATE ON entries.series_metadata 
-FOR EACH ROW EXECUTE FUNCTION entries.fn_sanitize_registry_entries();
+CREATE TRIGGER trg_process_series_metadata
+BEFORE INSERT OR UPDATE ON entries.series_metadata
+FOR EACH ROW EXECUTE FUNCTION entries.fn_process_metadata();
 
-CREATE TRIGGER trg_sanitize_movies 
+CREATE TRIGGER trg_process_movie_metadata
 BEFORE INSERT OR UPDATE ON entries.movie_metadata
-FOR EACH ROW EXECUTE FUNCTION entries.fn_sanitize_registry_entries();
+FOR EACH ROW EXECUTE FUNCTION entries.fn_process_metadata();
+
+-- ====================================================================
 
 -- TIMESTAMPING
 CREATE OR REPLACE FUNCTION entries.fn_set_last_updated()
@@ -210,6 +225,8 @@ FOR EACH ROW EXECUTE FUNCTION entries.fn_set_last_updated();
 CREATE TRIGGER trg_last_updated_movie_log
 BEFORE UPDATE ON entries.movie_log
 FOR EACH ROW EXECUTE FUNCTION entries.fn_set_last_updated();
+
+-- ====================================================================
 
 -- PROGRESS PROTECTOR
 CREATE OR REPLACE FUNCTION entries.fn_progress_protector()
@@ -250,71 +267,7 @@ CREATE TRIGGER trg_progress_protector
 BEFORE INSERT OR UPDATE ON entries.series_log 
 FOR EACH ROW EXECUTE FUNCTION entries.fn_progress_protector();
 
--- AUDIT SYSTEM
--- 1. SERIES METADATA AUDIT
-CREATE OR REPLACE FUNCTION entries.fn_audit_series_deletion()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO entries.series_metadata_audit 
-   ( series_id, series_code, title, original_data)
-    VALUES 
-   ( OLD.series_id, OLD.series_code, OLD.title, to_jsonb(OLD) ); -- Preserves all column values as a JSON object 
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_audit_series_delete 
-BEFORE DELETE ON entries.series_metadata 
-FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_series_deletion();
-
--- 2. MOVIE METADATA AUDIT
-CREATE OR REPLACE FUNCTION entries.fn_audit_movie_deletion()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO entries.movies_audit 
-   ( movie_id, movie_title, original_data )
-    VALUES 
-   ( OLD.movie_id, OLD.title, to_jsonb(OLD) );
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_audit_movie_delete 
-BEFORE DELETE ON entries.movie_metadata
-FOR EACH ROW EXECUTE FUNCTION entries.fn_audit_movie_deletion();
-
--- 3. SERIES LOG AUDIT
-CREATE OR REPLACE FUNCTION entries.fn_audit_series_log_changes()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO entries.series_log_audit (
-        log_id, series_id, season_no, 
-        watch_status, is_rewatch, operation
-    )
-    VALUES (
-        OLD.log_id, OLD.series_id, OLD.season_no, 
-        OLD.watch_status, OLD.is_rewatch, TG_OP
-    );
-
-    IF (TG_OP = 'DELETE') THEN
-        RETURN OLD;
-    ELSE
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_audit_series_log_delete
-BEFORE DELETE ON entries.series_log
-FOR EACH ROW
-EXECUTE FUNCTION entries.fn_audit_series_log_changes();
-
-CREATE TRIGGER trg_audit_series_log_update
-AFTER UPDATE ON entries.series_log
-FOR EACH ROW
-WHEN (OLD.* IS DISTINCT FROM NEW.*)
-EXECUTE FUNCTION entries.fn_audit_series_log_changes();
-
+-- ===========================================================================
 
 -- 	MOVIE LOG STATUS
 CREATE OR REPLACE FUNCTION entries.fn_sync_movie_status()
@@ -346,6 +299,7 @@ CREATE TRIGGER trg_sync_movie_status
 AFTER INSERT OR UPDATE OR DELETE ON entries.movie_log
 FOR EACH ROW EXECUTE FUNCTION entries.fn_sync_movie_status();
 
+-- ============================================================
 
 -- MOVIE LOG REWATCH STAMP
 CREATE OR REPLACE FUNCTION entries.fn_stamp_movie_rewatch()
@@ -371,7 +325,6 @@ CREATE TRIGGER trg_movie_rewatch_stamp
 BEFORE INSERT ON entries.movie_log
 FOR EACH ROW
 EXECUTE FUNCTION entries.fn_stamp_movie_rewatch();
-
 
 -- SERIES LOG REWATCH STAMP
 CREATE OR REPLACE FUNCTION entries.fn_determine_rewatch_status()
