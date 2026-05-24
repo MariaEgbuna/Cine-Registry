@@ -79,7 +79,7 @@ def log_movie():
 
     # --- STEP 2: FETCH DEEP METADATA ---
     detail_params = {"api_key": TMDB_API_KEY, "language": "en-US"}
-    d = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}", params=detail_params, timeout=10).json()
+    d = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}", params=detail_params, timeout=30).json()
 
     official_title = d.get('title')
     year_released = d.get('release_date', '0000')[:4] 
