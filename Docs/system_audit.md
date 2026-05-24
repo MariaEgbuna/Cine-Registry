@@ -1,56 +1,60 @@
 # System Audit and Operational Logging
 
-This document explains how I manage the database, including recovering lost data, watching for errors, and checking system health.
+This document covers how the database protects itself: audit triggers that capture deleted data as JSONB snapshots, the recovery workflow for restoring lost records, timestamp automation, and how to verify that all triggers are active.
 
 ---
 
-## 1. Data Recovery using Audit Logs
+## 1. Data Recovery via Audit Triggers
 
-When I delete a record, the system uses a special rule to take a snapshot of that data. I save this in an audit table as a JSON file. This allows me to perfectly restore the data if I ever delete something by mistake.
+When a row is deleted from a primary table, a `BEFORE DELETE` trigger fires and serializes the full row as a JSONB object into a corresponding audit table (`series_metadata_audit` or `movie_metadata_audit`). This means no deletion is truly permanent, the original record can always be reconstructed exactly as it was.
 
-### Restoring a Deleted Entry
+### Restoring a Deleted Record
 
-If I accidentally delete a show, I can find the saved details in the `series_metadata_audit` table. I keep a simple script in my cheat sheet that takes those saved details and puts them back into the main database exactly as they were before.
+If a show is accidentally deleted from `series_metadata`, find its snapshot in the audit table and re-insert it using `jsonb_populate_record`, which maps the stored JSONB back to the table's original row type:
 
-``` SQL
-INSERT INTO entries.series_metadata 
+```sql
+INSERT INTO entries.series_metadata
 SELECT * FROM jsonb_populate_record(
-    NULL::entries.series_metadata, 
-    (SELECT original_data FROM entries.series_metadata_audit 
-     WHERE series_code = 'ENTER_CODE_HERE' 
+    NULL::entries.series_metadata,
+    (SELECT original_data
+     FROM entries.series_metadata_audit
+     WHERE series_code = 'ENTER_CODE_HERE'
      LIMIT 1)
 );
 ```
 
-Result: The record is re-inserted into the primary registry, and all original attributes, including GIN-indexed arrays and foreign keys, are restored.
+This restores the record with all original attributes intact, including GIN-indexed genre arrays and any foreign key values. The audit row itself is kept in place as a permanent log of the deletion event.
 
 ---
 
-## 2. Trigger and Procedure Health Check
+## 2. Trigger Health Check
 
-I use a system view to make sure everything in my database is running smoothly. By checking the system information, I can verify that all my automated rules are correctly connected to their tables. This ensures that the "brain" of my database is always active and guarding my data.
+You can verify that all triggers are correctly attached to their tables by querying `information_schema.triggers`. This is useful after any schema migration or if you suspect a trigger isn't firing.
 
-### Audit Query
-
-``` SQL
-SELECT 
-    event_object_table AS table_name, 
-    trigger_name, 
+```sql
+SELECT
+    event_object_table AS table_name,
+    trigger_name,
     event_manipulation AS event
-FROM information_schema.triggers 
-WHERE trigger_schema = 'entries';
+FROM information_schema.triggers
+WHERE trigger_schema = 'entries'
+ORDER BY table_name, event;
 ```
 
+The output should list every trigger across every table in the `entries` schema. If a trigger is missing from the results, it was either not installed or was accidentally dropped -- re-run `02_triggers.sql` to restore it.
+
 ---
 
-## 3. Automated Date Stamping
+## 3. Automated Timestamp Logging
 
-Every time I change a record, a rule called `fn_set_last_updated` automatically records the time of that update down to the nanosecond.  Because the system clock creates this time, it is always accurate and does not depend on me typing it in. This keeps my history reliable and makes it easy for my Power BI reports to show exactly when my data changed.
+The `fn_set_last_updated` trigger fires automatically on every `UPDATE` to the main metadata and log tables. It writes the current database server timestamp to the `last_updated` column, accurate to the nanosecond.
 
-### Timestamp Verification
+This is intentionally handled at the database level rather than the application level, it means the timestamp is always reliable regardless of which tool or script made the change.
 
-``` SQL
-SELECT title, series_code, last_updated 
+To verify timestamps are being recorded correctly:
+
+```sql
+SELECT title, series_code, last_updated
 FROM entries.series_metadata
 ORDER BY last_updated DESC
 LIMIT 5;
@@ -58,19 +62,15 @@ LIMIT 5;
 
 ---
 
-## 4. The "Progress Protector"
+## 4. The `fn_progress_protector` Trigger
 
-The `fn_progress_protector` rule handles the status of each show for me. By letting the database manage these changes, I do not have to update them myself.
+This trigger fires after each insert or update to `series_log`. It compares `episodes_watched` against `total_episodes` in the linked `series_metadata` row and manages the watch status automatically.
 
-| Current State | Condition | Automated Result |
-| :--- | :--- | :--- |
-| **Watching** | I have not finished all episodes. | Status is "Watching"; no end date. |
-| **Finished** | I have watched every episode. | Status changes to "Finished"; current date is added. |
-| **Dropped** | I manually stop the show. | Record closes; current date is added. |
-| **On-Hold** | I manually pause the show. | Record stays open; no end date. |
+| Status | Condition | Automated result |
+|--------|-----------|-----------------|
+| `Watching` | `episodes_watched` is less than `total_episodes` | Status stays as `Watching`; `end_date` remains null |
+| `Finished` | `episodes_watched` equals `total_episodes` | Status updated to `Finished`; `end_date` set to current date |
+| `Dropped` | Manually set via `series_watch` procedure | Status set to `Dropped`; `end_date` set to current date |
+| `On-Hold` | Manually set via `series_watch` procedure | Status set to `On-Hold`; `end_date` remains null |
 
----
-
-*Operational Audit Version: 1.0.0*  
-*Maintained by Maria*  
-*Focus on Database Reliability & Integrity*
+The `Dropped` and `On-Hold` states bypass the progress check and are set explicitly through the `series_watch` stored procedure rather than triggered automatically.
