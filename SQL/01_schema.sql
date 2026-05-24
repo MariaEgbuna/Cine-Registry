@@ -78,7 +78,6 @@ CREATE TABLE entries.movie_metadata (
     runtime_mins SMALLINT,
     genres TEXT[],
     tmdb_id INTEGER UNIQUE,
-    status VARCHAR(20) NOT NULL DEFAULT 'Backlog' CHECK (status IN ('Backlog', 'Logged')),
     last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
