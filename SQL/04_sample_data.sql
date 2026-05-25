@@ -75,7 +75,7 @@ VALUES
 -- ============================================================================
 -- VERIFICATION
 -- ============================================================================
-SELECT * FROM series_metadata;
-SELECT * FROM movie_metadata;
-SELECT * FROM series_log;
-SELECT * FROM movie_log;
+SELECT * FROM entries.series_metadata;
+SELECT * FROM entries.movie_metadata;
+SELECT * FROM entries.series_log;
+SELECT * FROM entries.movie_log;
