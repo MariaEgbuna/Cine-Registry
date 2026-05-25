@@ -1,58 +1,69 @@
--- add_series (Series Metadata Intake): Registers new TV show into the series_metadata table.
-CREATE OR REPLACE PROCEDURE entries.add_series(
+-- ADD METADATA: Registers a new TV show or Movie into the metadata table
+CREATE OR REPLACE PROCEDURE registry.add_metadata(
+    p_type           TEXT, 
     p_title          TEXT, 
-    p_country        TEXT, 
-    p_released       INTEGER, 
+    p_year           INTEGER, 
+    p_country        TEXT DEFAULT 'US',
+    p_extra_info     TEXT DEFAULT 'Unknown', -- Acts as Platform for Series and Director for movies
+    p_runtime        INTEGER DEFAULT NULL,
+    p_genres         TEXT[] DEFAULT NULL, 
+    p_tmdb_id        INTEGER DEFAULT NULL,
+    p_status         TEXT DEFAULT NULL,
     p_completed      INTEGER DEFAULT NULL, 
     p_seasons        INTEGER DEFAULT NULL, 
     p_episodes       INTEGER DEFAULT NULL, 
-    p_runtime        INTEGER DEFAULT NULL, 
-    p_genres         TEXT[] DEFAULT NULL, 
-    p_platform       TEXT DEFAULT NULL, 
-    p_status         TEXT DEFAULT 'Returning', 
-    p_seasons_pre_log INTEGER DEFAULT 0,
-    p_tmdb_id        INTEGER DEFAULT NULL
+    p_seasons_pre_log INTEGER DEFAULT 0
 )
 LANGUAGE plpgsql
 AS $procedure$
 DECLARE
     v_exists BOOLEAN;
-    v_clean_genres TEXT[];
-    v_clean_platform TEXT;
+    v_type   TEXT := UPPER(p_type);
 BEGIN
-    v_clean_genres := array_replace(p_genres, 'Science Fiction', 'SciFi');
-    v_clean_platform := UPPER(p_platform);
+    IF p_tmdb_id IS NULL THEN
+        RAISE EXCEPTION 'Registration failed: tmdb_id is required and cannot be NULL.';
+    END IF;
 
-    IF p_tmdb_id IS NOT NULL THEN
-        SELECT EXISTS (
-            SELECT 1 FROM entries.series_metadata WHERE tmdb_id = p_tmdb_id
-        ) INTO v_exists;
+    -- Duplicate check based on TMDB ID
+    IF v_type = 'SERIES' THEN
+        SELECT EXISTS (SELECT 1 FROM registry.series_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
+    ELSIF v_type = 'MOVIE' THEN
+        SELECT EXISTS (SELECT 1 FROM registry.movie_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
     ELSE
-        SELECT EXISTS (
-            SELECT 1 FROM entries.series_metadata 
-            WHERE title = p_title AND year_released = p_released::SMALLINT
-        ) INTO v_exists;
+        RAISE EXCEPTION 'Invalid media type: %. Use "MOVIE" or "SERIES".', v_type;
     END IF;
 
     IF v_exists THEN
-        RAISE NOTICE 'Series "%" is already registered. Skipping.', p_title;
+        RAISE NOTICE '% (%) is already in the % library.', p_title, p_year, v_type;
         RETURN;
     END IF;
+    
+    IF v_type = 'SERIES' THEN
+        INSERT INTO registry.series_metadata (
+            title, country, year_released, year_completed, total_seasons, total_episodes, 
+            avg_runtime, genres, platform, status, seasons_pre_log, tmdb_id
+        )
+        VALUES (
+            p_title, p_country, p_year::SMALLINT, p_completed::SMALLINT, p_seasons::SMALLINT, 
+            p_episodes::SMALLINT, p_runtime::SMALLINT, p_genres, p_extra_info, 
+            COALESCE(p_status, 'Returning'), p_seasons_pre_log::SMALLINT, p_tmdb_id
+        );
+    ELSE
+        INSERT INTO registry.movie_metadata (
+            title, year_released, country, director, 
+            runtime_mins, genres, tmdb_id
+        )
+        VALUES (
+            p_title, p_year::SMALLINT, p_country, p_extra_info, 
+			p_runtime::SMALLINT,  p_genres, p_tmdb_id
+        );
+    END IF;
 
-    INSERT INTO entries.series_metadata (
-        title, country, year_released, year_completed, total_seasons, total_episodes, 
-        avg_runtime, genres, platform, status, seasons_pre_log, tmdb_id
-    )
-    VALUES (
-        p_title, p_country, p_released::SMALLINT, p_completed::SMALLINT, p_seasons::SMALLINT, p_episodes::SMALLINT,
-        p_runtime::SMALLINT, v_clean_genres, v_clean_platform, p_status, p_seasons_pre_log::SMALLINT, p_tmdb_id
-    );
-
-    RAISE NOTICE 'Series "%" (%) registered successfully.', p_title, p_released;
+    RAISE NOTICE '% (%) registered successfully as %.', p_title, p_year, v_type;
 END;
 $procedure$;
 
--- series_watch (Progress Tracking): for managing active episodic viewing.
+-- SERIES WATCH: for managing active episodic viewing.
 CREATE OR REPLACE PROCEDURE entries.series_watch(
     p_series_code      TEXT, 
     p_season_no        INTEGER, 
@@ -121,58 +132,7 @@ BEGIN
 END;
 $procedure$;
 
--- add_movie (Movie Metadata Intake): Official registrar for film details within movie_metadata table.
-CREATE OR REPLACE PROCEDURE entries.add_movie(
-    p_title         TEXT,
-    p_year          INTEGER,
-    p_country       TEXT DEFAULT 'US',
-    p_director      TEXT DEFAULT 'Unknown',
-    p_runtime_mins  INTEGER DEFAULT NULL,
-    p_genres        TEXT[] DEFAULT NULL,
-    p_tmdb_id       INTEGER DEFAULT NULL
-)
-LANGUAGE plpgsql
-AS $procedure$
-DECLARE
-    v_exists        BOOLEAN;
-    v_clean_genres  TEXT[];
-    v_clean_country TEXT;
-    v_new_id        INTEGER;
-BEGIN
-    v_clean_genres := array_replace(p_genres, 'Science Fiction', 'SciFi');
-    v_clean_country := UPPER(p_country);
-
-    IF p_tmdb_id IS NOT NULL THEN
-        SELECT EXISTS (
-            SELECT 1 FROM entries.movie_metadata WHERE tmdb_id = p_tmdb_id
-        ) INTO v_exists;
-    ELSE
-        SELECT EXISTS (
-            SELECT 1 FROM entries.movie_metadata 
-            WHERE title = p_title AND year_released = p_year::SMALLINT
-        ) INTO v_exists;
-    END IF;
-
-    IF v_exists THEN
-        RAISE NOTICE 'Movie "%" (%) is already in the library.', p_title, p_year;
-        RETURN;
-    END IF;
-
-    INSERT INTO entries.movie_metadata (
-        title, year_released, country, director, 
-        runtime_mins, genres, tmdb_id
-    )
-    VALUES (
-        p_title, p_year::SMALLINT, v_clean_country, p_director,
-        p_runtime_mins::SMALLINT, v_clean_genres, p_tmdb_id
-    )
-    RETURNING movie_id INTO v_new_id;
-
-    RAISE NOTICE 'Movie "%" registered successfully with ID: %.', p_title, v_new_id;
-END;
-$procedure$;
-
--- movie_watch (Movie Activity Logger): Records a specific viewing event within the movie_log table.
+-- MOVIE WATCH (Movie Activity Logger): Records a specific viewing event within the movie_log table.
 CREATE OR REPLACE PROCEDURE entries.movie_watch(
     p_movie_code        TEXT, 
     p_rating            NUMERIC DEFAULT NULL, 
