@@ -1,5 +1,5 @@
 -- ADD METADATA: Registers a new TV show or Movie into the metadata table
-CREATE OR REPLACE PROCEDURE registry.add_metadata(
+CREATE OR REPLACE PROCEDURE entries.add_metadata(
     p_type           TEXT, 
     p_title          TEXT, 
     p_year           INTEGER, 
@@ -26,9 +26,9 @@ BEGIN
 
     -- Duplicate check based on TMDB ID
     IF v_type = 'SERIES' THEN
-        SELECT EXISTS (SELECT 1 FROM registry.series_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
+        SELECT EXISTS (SELECT 1 FROM entries.series_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
     ELSIF v_type = 'MOVIE' THEN
-        SELECT EXISTS (SELECT 1 FROM registry.movie_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
+        SELECT EXISTS (SELECT 1 FROM entries.movie_metadata WHERE tmdb_id = p_tmdb_id) INTO v_exists;
     ELSE
         RAISE EXCEPTION 'Invalid media type: %. Use "MOVIE" or "SERIES".', v_type;
     END IF;
@@ -39,7 +39,7 @@ BEGIN
     END IF;
     
     IF v_type = 'SERIES' THEN
-        INSERT INTO registry.series_metadata (
+        INSERT INTO entries.series_metadata (
             title, country, year_released, year_completed, total_seasons, total_episodes, 
             avg_runtime, genres, platform, status, seasons_pre_log, tmdb_id
         )
@@ -49,7 +49,7 @@ BEGIN
             COALESCE(p_status, 'Returning'), p_seasons_pre_log::SMALLINT, p_tmdb_id
         );
     ELSE
-        INSERT INTO registry.movie_metadata (
+        INSERT INTO entries.movie_metadata (
             title, year_released, country, director, 
             runtime_mins, genres, tmdb_id
         )
