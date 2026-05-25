@@ -90,11 +90,8 @@ DB_PORT=5432
 Run these from the project root. Each script fetches metadata from TMDB first, then calls the appropriate stored procedure to write to the database.
 
 ```bash
-# Log a movie watch (fetches details from TMDB, then calls movie_watch)
-python Python/movie_logger.py
-
-# Register a new TV show (fetches details from TMDB, then calls add_series)
+# Register a new TV show or Movie (fetches details from TMDB, then calls add_metadata)
 python Python/add_series.py
 ```
 
-Both scripts will prompt you for the title or TMDB ID interactively, or you can pass it as a command-line argument depending on how you've configured them.
+The script will prompt you for the title or TMDB ID interactively, or you can pass it as a command-line argument depending on how you've configured them.
