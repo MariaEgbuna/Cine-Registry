@@ -28,8 +28,7 @@ Cine-Registry/
 │   ├── 03_procedures.sql    -- Stored procedures used as the write API (add_series, movie_watch, etc.)
 │   └── 04_sample_data.sql   -- Test data and verification scripts
 ├── Python/
-│   ├── add_movie.py         -- Fetches movie details from TMDB and calls add_movie procedure
-│   └── add_series.py        -- Fetches show details from TMDB and calls add_series procedure
+│   └── add_metadata.py      -- Fetches movie/series details from TMDB and calls add_metadata procedure
 ├── Docs/
 │   ├── getting_started.md   -- Setup and deployment guide
 │   ├── system_audit.md      -- Audit logging, data recovery, and trigger health checks
@@ -47,7 +46,7 @@ Cine-Registry/
 
 I don't write directly to the tables. All data goes through PL/pgSQL stored procedures that act as a controlled write API:
 
-- `add_series` / `add_movie`: Registers a new title in the metadata table before any watch log can reference it. This enforces referential integrity at the application level, not just through database constraints.
+- `add_metadata`: Registers a new title in the metadata table before any watch log can reference it. This enforces referential integrity at the application level, not just through database constraints.
 - `series_watch`: Handles the full lifecycle of a watch session: starts a new season record if needed, increments the episode counter, and triggers the status update logic.
 - `movie_watch`: Includes rewatch detection. If the movie already exists in the log, it automatically links the new session to the original record and flags it as a rewatch.
 
