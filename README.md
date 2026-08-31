@@ -58,7 +58,7 @@ Alongside the stored procedures, three trigger functions run in the background w
  
 `fn_set_last_updated` fires whenever a row changes on any of the main tables. It stamps the exact time of the update, but it pulls that timestamp from the database server clock. That way, the timestamp stays accurate and consistent no matter what's written to the database, whether it's the Python pipeline or a manual edit.
  
-Then there are the audit triggers, which only fire when a row gets deleted. Right before that row disappears, the trigger takes the data, converts it into JSONB, and writes it into a matching audit table, either `series_metadata_audit` or `movie_metadata_audit` depending on what was deleted. So if I ever delete something by mistake, the record still exists somewhere, and I can recover it.
+Then there are the audit triggers, which only fire when a row gets deleted. Right before that row disappears, the trigger takes the data, converts it into JSONB, and writes it into a matching audit table, either `metadata_audit` or `log_audit` depending on what was deleted. So if I ever delete something by mistake, the record still exists somewhere, and I can recover it.
  
 ### Python as the Data Pipeline
  
